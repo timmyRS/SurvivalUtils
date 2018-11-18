@@ -30,6 +30,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		reloadConfig();
 		getCommand("reloadsurvivalutils").setExecutor(this);
 		getCommand("tpa").setExecutor(this);
+		getCommand("tpahere").setExecutor(this);
 		getCommand("tpaccept").setExecutor(this);
 		getCommand("tpcancel").setExecutor(this);
 		getServer().getPluginManager().registerEvents(this, this);
@@ -122,18 +123,12 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		switch(c.getName())
 		{
 			case "reloadsurvivalutils":
-				if(s.hasPermission("survivalutils.reload"))
-				{
-					reloadConfig();
-					saveConfig();
-					s.sendMessage("§aReloaded the configuration.");
-				}
-				else
-				{
-					s.sendMessage("§cYou're not authorized to use this command.");
-				}
+				reloadConfig();
+				saveConfig();
+				s.sendMessage("§aReloaded the configuration.");
 				break;
 			case "tpa":
+			case "tpahere":
 				if(s instanceof Player)
 				{
 					if(a.length == 1)
@@ -142,26 +137,45 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 						if(t != null && t.isOnline())
 						{
 							final Player p = (Player) s;
-							TeleportationRequest tr = TeleportationRequest.getFrom(p);
-							if(tr != null && !tr.to.equals(t))
+							if(!t.equals(p))
 							{
-								p.performCommand("/tpcancel");
-								tr = null;
-							}
-							if(tr == null)
-							{
-								synchronized(teleportationRequests)
+								TeleportationRequest tr = TeleportationRequest.getFrom(p);
+								if(tr != null && !tr.to.equals(t))
 								{
-									teleportationRequests.add(new TeleportationRequest(p, t));
+									synchronized(teleportationRequests)
+									{
+										teleportationRequests.remove(tr);
+									}
+									s.sendMessage("§eYour teleportation request to " + tr.to.getName() + " has been cancelled.");
+									tr = null;
 								}
-								t.sendMessage(p.getName() + " has sent you a teleportation request.");
-								t.sendMessage("You can accept it using /tpaccept " + p.getName());
-								p.sendMessage("§aYou've sent a teleportation request to " + t.getName() + "");
-								p.sendMessage("§aYou can cancel it using /tpcancel.");
+								if(tr == null)
+								{
+									final boolean here = c.getName().equals("tpahere");
+									synchronized(teleportationRequests)
+									{
+										teleportationRequests.add(new TeleportationRequest(p, t, here));
+									}
+									if(here)
+									{
+										t.sendMessage("§e" + p.getName() + " has requested you to teleport to them.");
+									}
+									else
+									{
+										t.sendMessage("§e" + p.getName() + " has requested to teleport to you.");
+									}
+									t.sendMessage("You can accept it using /tpaccept " + p.getName());
+									p.sendMessage("§aYou've sent a teleportation request to " + t.getName() + ".");
+									p.sendMessage("§aYou can cancel it using /tpcancel.");
+								}
+								else
+								{
+									p.sendMessage("§cI already got it the first time.");
+								}
 							}
 							else
 							{
-								p.sendMessage("§cI already got it the first time.");
+								s.sendMessage("Yes?");
 							}
 						}
 						else
@@ -195,7 +209,14 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 								{
 									teleportationRequests.remove(tr);
 								}
-								t.teleport(p);
+								if(tr.here)
+								{
+									p.teleport(t);
+								}
+								else
+								{
+									t.teleport(p);
+								}
 							}
 							else
 							{
@@ -248,12 +269,14 @@ class TeleportationRequest
 {
 	final Player from;
 	final Player to;
+	final boolean here;
 	final int expires;
 
-	TeleportationRequest(Player from, Player to)
+	TeleportationRequest(Player from, Player to, boolean here)
 	{
 		this.from = from;
 		this.to = to;
+		this.here = here;
 		this.expires = Math.toIntExact(System.currentTimeMillis() / 1000L) + 60;
 	}
 
