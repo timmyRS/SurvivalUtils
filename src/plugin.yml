@@ -1,0 +1,20 @@
+---
+name: SurvivalUtils
+version: 1.0
+main: de.timmyrs.SurvivalUtils
+author: timmyRS
+website: https://timmyrs.de
+
+commands:
+  reloadsurvivalutils:
+    usage: /reloadsurvivalutils
+  tpa:
+    usage: /tpa <player>
+  tpaccept:
+    usage: /tpaccept <player>
+  tpcancel:
+    usage: /tpcancel
+
+permissions:
+  survivalutils.reload:
+    default: 'op'
