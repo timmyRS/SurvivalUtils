@@ -1,9 +1,11 @@
 package de.timmyrs;
 
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.MemorySection;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -20,23 +22,69 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 {
 	private final ArrayList<Player> sleepingPlayers = new ArrayList<>();
 	static final ArrayList<TeleportationRequest> teleportationRequests = new ArrayList<>();
+	private int sleepCoordinationTask = -1;
+
+	private Location stringToLocation(String string)
+	{
+		final String[] arr = string.split(",");
+		if(arr.length != 6)
+		{
+			return null;
+		}
+		return new Location(getServer().getWorld(arr[0]), Double.valueOf(arr[1]), Double.valueOf(arr[2]), Double.valueOf(arr[3]), Float.valueOf(arr[4]), Float.valueOf(arr[5]));
+	}
+
+	private String locationToString(Location location)
+	{
+		return location.getWorld().getName() + "," + location.getX() + "," + location.getY() + "," + location.getZ() + "," + location.getYaw() + "," + location.getPitch();
+	}
 
 	@Override
 	public void onEnable()
 	{
-		getConfig().addDefault("enableSleepCoordination", true);
+		getConfig().addDefault("sleepCoordination.enabled", true);
+		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
+		getConfig().addDefault("sleepCoordination.intervalSeconds", 20);
 		getConfig().options().copyDefaults(true);
 		saveConfig();
-		reloadConfig();
-		getCommand("reloadsurvivalutils").setExecutor(this);
+		reloadSurvivalUtilsConfig();
 		getCommand("tpa").setExecutor(this);
 		getCommand("tpahere").setExecutor(this);
 		getCommand("tpaccept").setExecutor(this);
 		getCommand("tpcancel").setExecutor(this);
+		getCommand("warp").setExecutor(this);
+		getCommand("warps").setExecutor(this);
+		getCommand("setwarp").setExecutor(this);
+		getCommand("reloadsurvivalutils").setExecutor(this);
 		getServer().getPluginManager().registerEvents(this, this);
 		getServer().getScheduler().scheduleSyncRepeatingTask(this, ()->
 		{
-			if(getConfig().getBoolean("enableSleepCoordination"))
+			final int time = Math.toIntExact(System.currentTimeMillis() / 1000L);
+			synchronized(teleportationRequests)
+			{
+				final ArrayList<TeleportationRequest> _teleportationRequests = new ArrayList<>(teleportationRequests);
+				for(TeleportationRequest tr : _teleportationRequests)
+				{
+					if(tr.expires < time)
+					{
+						teleportationRequests.remove(tr);
+						tr.from.sendMessage("§eYour teleportation request to " + tr.to.getName() + " has expired.");
+					}
+				}
+			}
+		}, 200, 200);
+	}
+
+	private void reloadSurvivalUtilsConfig()
+	{
+		reloadConfig();
+		if(sleepCoordinationTask != -1)
+		{
+			getServer().getScheduler().cancelTask(sleepCoordinationTask);
+		}
+		if(getConfig().getBoolean("sleepCoordination.enabled"))
+		{
+			sleepCoordinationTask = getServer().getScheduler().scheduleSyncRepeatingTask(this, ()->
 			{
 				final HashMap<World, ArrayList<Player>> worlds = new HashMap<>();
 				synchronized(sleepingPlayers)
@@ -69,31 +117,20 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				{
 					if(entry.getValue().size() > 0 && entry.getValue().size() < entry.getKey().getPlayers().size())
 					{
-						final String message = "§e" + sleepingPlayers.size() + "/" + entry.getKey().getPlayers().size() + " players are sleeping. Won't you join them?";
+						final String message = getConfig().getString("sleepCoordination.message").replace("&", "§").replace("%sleeping%", String.valueOf(entry.getValue().size())).replace("%total%", String.valueOf(entry.getKey().getPlayers().size()));
 						for(Player p : entry.getKey().getPlayers())
 						{
 							p.sendMessage(message);
 						}
 					}
 				}
-			}
-		}, 400, 400);
-		getServer().getScheduler().scheduleSyncRepeatingTask(this, ()->
+			}, getConfig().getLong("sleepCoordination.intervalSeconds") * 20L, getConfig().getLong("sleepCoordination.intervalSeconds") * 20L);
+		}
+		else
 		{
-			final int time = Math.toIntExact(System.currentTimeMillis() / 1000L);
-			synchronized(teleportationRequests)
-			{
-				final ArrayList<TeleportationRequest> _teleportationRequests = new ArrayList<>(teleportationRequests);
-				for(TeleportationRequest tr : _teleportationRequests)
-				{
-					if(tr.expires < time)
-					{
-						teleportationRequests.remove(tr);
-						tr.from.sendMessage("§eYour teleportation request to " + tr.to.getName() + " has expired.");
-					}
-				}
-			}
-		}, 200, 200);
+			sleepCoordinationTask = -1;
+		}
+		saveConfig();
 	}
 
 	@EventHandler
@@ -122,11 +159,6 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	{
 		switch(c.getName())
 		{
-			case "reloadsurvivalutils":
-				reloadConfig();
-				saveConfig();
-				s.sendMessage("§aReloaded the configuration.");
-				break;
 			case "tpa":
 			case "tpahere":
 				if(s instanceof Player)
@@ -166,7 +198,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 									}
 									t.sendMessage("You can accept it using /tpaccept " + p.getName());
 									p.sendMessage("§aYou've sent a teleportation request to " + t.getName() + ".");
-									p.sendMessage("§aYou can cancel it using /tpcancel.");
+									p.sendMessage("You can cancel it using /tpcancel.");
 								}
 								else
 								{
@@ -259,6 +291,77 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				{
 					s.sendMessage("§cThis command is only for players.");
 				}
+				break;
+			case "warp":
+				if(s instanceof Player)
+				{
+					if(a.length == 1)
+					{
+						if(getConfig().contains("warps." + a[0].toLowerCase()))
+						{
+							((Player) s).teleport(stringToLocation(getConfig().getString("warps." + a[0].toLowerCase())));
+						}
+						else
+						{
+							s.sendMessage("§c'" + a[0].toLowerCase() + "' is not a valid warp point.");
+						}
+					}
+					else
+					{
+						s.sendMessage("§cSyntax: /setwarp <player>");
+					}
+				}
+				else
+				{
+					s.sendMessage("§cThis command is only for players.");
+				}
+				break;
+			case "warps":
+				MemorySection warps = (MemorySection) getConfig().get("warps");
+				if(warps != null)
+				{
+					Map<String, Object> values = warps.getValues(false);
+					if(values.size() > 0)
+					{
+						final StringBuilder message = new StringBuilder("There ").append((values.size() == 1 ? "is 1 warp" : "are " + values.size() + " warps")).append(":");
+						for(String name : values.keySet())
+						{
+							message.append(" ").append(name);
+						}
+						s.sendMessage(message.toString());
+					}
+					else
+					{
+						s.sendMessage("§cThere are no warps.");
+					}
+				}
+				else
+				{
+					s.sendMessage("§cThere are no warps.");
+				}
+				break;
+			case "setwarp":
+				if(s instanceof Player)
+				{
+					if(a.length == 1)
+					{
+						getConfig().set("warps." + a[0].toLowerCase(), locationToString(((Player) s).getLocation()));
+						s.sendMessage("§aSuccessfully created warp point '" + a[0].toLowerCase() + "'.");
+						saveConfig();
+					}
+					else
+					{
+						s.sendMessage("§cSyntax: /setwarp <player>");
+					}
+				}
+				else
+				{
+					s.sendMessage("§cThis command is only for players.");
+				}
+				break;
+			case "reloadsurvivalutils":
+				reloadSurvivalUtilsConfig();
+				s.sendMessage("§aReloaded the configuration.");
 				break;
 		}
 		return true;

@@ -1,13 +1,11 @@
 ---
 name: SurvivalUtils
-version: 1.1
+version: 1.2
 main: de.timmyrs.SurvivalUtils
 author: timmyRS
 website: https://timmyrs.de
 
 commands:
-  reloadsurvivalutils:
-    permission: survivalutils.reload
   tpa:
     permission: survivalutils.tpa
     usage: /tpa <player>
@@ -18,9 +16,22 @@ commands:
     usage: /tpaccept <player>
   tpcancel:
     permission: survivalutils.tpa
+  warp:
+    permission: survivalutils.warp
+  warps:
+    aliases: [warplist]
+    permission: survivalutils.warp
+  setwarp:
+    permission: survivalutils.setwarp
+  reloadsurvivalutils:
+    permission: survivalutils.reload
 
 permissions:
   survivalutils.tpa:
     default: false
+  survivalutils.warp:
+    default: false
+  survivalutils.setwarp:
+    default: false
   survivalutils.reload:
-    default: 'op'
+    default: false
