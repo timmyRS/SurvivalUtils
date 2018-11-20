@@ -23,10 +23,11 @@ import java.util.Map;
 @SuppressWarnings("unused")
 public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecutor
 {
-	private final ArrayList<Player> sleepingPlayers = new ArrayList<>();
-	static final ArrayList<TeleportationRequest> teleportationRequests = new ArrayList<>();
-	private int sleepCoordinationTask = -1;
 	private File playerDataDir;
+	static final ArrayList<TradeRequest> tradeRequests = new ArrayList<>();
+	static final ArrayList<TeleportationRequest> teleportationRequests = new ArrayList<>();
+	private final ArrayList<Player> sleepingPlayers = new ArrayList<>();
+	private int sleepCoordinationTask = -1;
 
 	private Location stringToLocation(String string)
 	{
@@ -63,6 +64,8 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		getConfig().options().copyDefaults(true);
 		saveConfig();
 		reloadSurvivalUtilsConfig();
+		getCommand("survivalutils").setExecutor(this);
+		getCommand("trade").setExecutor(this);
 		getCommand("tpa").setExecutor(this);
 		getCommand("tpahere").setExecutor(this);
 		getCommand("tpaccept").setExecutor(this);
@@ -75,7 +78,6 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		getCommand("warps").setExecutor(this);
 		getCommand("setwarp").setExecutor(this);
 		getCommand("delwarp").setExecutor(this);
-		getCommand("reloadsurvivalutils").setExecutor(this);
 		getServer().getPluginManager().registerEvents(this, this);
 		getServer().getScheduler().scheduleSyncRepeatingTask(this, ()->
 		{
@@ -215,6 +217,20 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	{
 		switch(c.getName())
 		{
+			case "survivalutils":
+				if(a.length > 0 && a[0].equalsIgnoreCase("reload") && s.hasPermission("survivalutils.reload"))
+				{
+					reloadSurvivalUtilsConfig();
+					s.sendMessage("§aReloaded the configuration.");
+				}
+				else
+				{
+					s.sendMessage("https://github.com/timmyrs/SurvivalUtils");
+				}
+				break;
+			case "trade":
+
+				break;
 			case "tpa":
 			case "tpahere":
 				if(s instanceof Player)
@@ -371,7 +387,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					}
 					else
 					{
-						s.sendMessage("§cSyntax: /setwarp <player>");
+						s.sendMessage("§cSyntax: /warp <name>");
 					}
 				}
 				else
@@ -415,7 +431,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					}
 					else
 					{
-						s.sendMessage("§cSyntax: /setwarp <player>");
+						s.sendMessage("§cSyntax: /setwarp <name>");
 					}
 				}
 				else
@@ -432,8 +448,9 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					{
 						warps.remove(a[0].toLowerCase());
 						getConfig().set("warps", warps);
-						s.sendMessage("§aSuccessfully deleted warp point '" + a[0].toLowerCase() + "'.");
 						saveConfig();
+						reloadConfig();
+						s.sendMessage("§aSuccessfully deleted warp point '" + a[0].toLowerCase() + "'.");
 					}
 					else
 					{
@@ -442,7 +459,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				}
 				else
 				{
-					s.sendMessage("§cSyntax: /delwarp <player>");
+					s.sendMessage("§cSyntax: /delwarp <name>");
 				}
 				break;
 			}
@@ -612,13 +629,13 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					s.sendMessage("§cThis command is only for players.");
 				}
 				break;
-			case "reloadsurvivalutils":
-				reloadSurvivalUtilsConfig();
-				s.sendMessage("§aReloaded the configuration.");
-				break;
 		}
 		return true;
 	}
+}
+
+class TradeRequest
+{
 }
 
 class TeleportationRequest

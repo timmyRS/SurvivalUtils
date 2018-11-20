@@ -1,11 +1,14 @@
 ---
 name: SurvivalUtils
-version: 1.3
+version: 1.4-dev
 main: de.timmyrs.SurvivalUtils
 author: timmyRS
 website: https://timmyrs.de
 
 commands:
+  survivalutils: {}
+  trade:
+    permission: survivalutils.trade
   tpa:
     permission: survivalutils.tpa
   tpahere:
@@ -30,6 +33,3 @@ commands:
     permission: survivalutils.home
   delhome:
     permission: survivalutils.home
-  reloadsurvivalutils:
-    permission: survivalutils.reload
-
