@@ -5,14 +5,17 @@ import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.configuration.MemorySection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerBedLeaveEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -23,6 +26,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	private final ArrayList<Player> sleepingPlayers = new ArrayList<>();
 	static final ArrayList<TeleportationRequest> teleportationRequests = new ArrayList<>();
 	private int sleepCoordinationTask = -1;
+	private File playerDataDir;
 
 	private Location stringToLocation(String string)
 	{
@@ -42,9 +46,20 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@Override
 	public void onEnable()
 	{
+		playerDataDir = new File(getDataFolder(), "playerdata");
+		if(!playerDataDir.exists() && !playerDataDir.mkdir())
+		{
+			throw new RuntimeException("Failed to create " + playerDataDir.getPath());
+		}
 		getConfig().addDefault("sleepCoordination.enabled", true);
 		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
 		getConfig().addDefault("sleepCoordination.intervalSeconds", 20);
+		getConfig().addDefault("homeLimits.default", 10);
+		getConfig().addDefault("homeLimits.2", 10);
+		getConfig().addDefault("homeLimits.3", 10);
+		getConfig().addDefault("homeLimits.4", 10);
+		getConfig().addDefault("createWarpCommands", false);
+		getConfig().addDefault("warps", new HashMap<String, Object>());
 		getConfig().options().copyDefaults(true);
 		saveConfig();
 		reloadSurvivalUtilsConfig();
@@ -52,9 +67,14 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		getCommand("tpahere").setExecutor(this);
 		getCommand("tpaccept").setExecutor(this);
 		getCommand("tpcancel").setExecutor(this);
+		getCommand("home").setExecutor(this);
+		getCommand("homes").setExecutor(this);
+		getCommand("sethome").setExecutor(this);
+		getCommand("delhome").setExecutor(this);
 		getCommand("warp").setExecutor(this);
 		getCommand("warps").setExecutor(this);
 		getCommand("setwarp").setExecutor(this);
+		getCommand("delwarp").setExecutor(this);
 		getCommand("reloadsurvivalutils").setExecutor(this);
 		getServer().getPluginManager().registerEvents(this, this);
 		getServer().getScheduler().scheduleSyncRepeatingTask(this, ()->
@@ -73,6 +93,28 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				}
 			}
 		}, 200, 200);
+	}
+
+	private File getConfigFile(Player p)
+	{
+		return new File(playerDataDir, p.getUniqueId().toString().replace("-", "") + ".yml");
+	}
+
+	private int getHomeLimit(Player p)
+	{
+		if(p.hasPermission("survivalutils.homelimit4"))
+		{
+			return getConfig().getInt("homeLimits.4");
+		}
+		if(p.hasPermission("survivalutils.homelimit3"))
+		{
+			return getConfig().getInt("homeLimits.3");
+		}
+		if(p.hasPermission("survivalutils.homelimit2"))
+		{
+			return getConfig().getInt("homeLimits.2");
+		}
+		return getConfig().getInt("homeLimits.default");
 	}
 
 	private void reloadSurvivalUtilsConfig()
@@ -154,6 +196,20 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
+	@EventHandler
+	public void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent e)
+	{
+		if(getConfig().getBoolean("createWarpCommands"))
+		{
+			final String command = e.getMessage().substring(1).split(" ")[0].toLowerCase();
+			if(getServer().getPluginCommand(command) == null && getConfig().contains("warps." + command))
+			{
+				e.setCancelled(true);
+				e.getPlayer().teleport(stringToLocation(getConfig().getString("warps." + command)));
+			}
+		}
+	}
+
 	@Override
 	public boolean onCommand(CommandSender s, Command c, String l, String[] a)
 	{
@@ -168,46 +224,53 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 						final Player t = getServer().getPlayer(a[0]);
 						if(t != null && t.isOnline())
 						{
-							final Player p = (Player) s;
-							if(!t.equals(p))
+							if(t.hasPermission("survivalutils.tpa"))
 							{
-								TeleportationRequest tr = TeleportationRequest.getFrom(p);
-								if(tr != null && !tr.to.equals(t))
+								final Player p = (Player) s;
+								if(!t.equals(p))
 								{
-									synchronized(teleportationRequests)
+									TeleportationRequest tr = TeleportationRequest.getFrom(p);
+									if(tr != null && !tr.to.equals(t))
 									{
-										teleportationRequests.remove(tr);
+										synchronized(teleportationRequests)
+										{
+											teleportationRequests.remove(tr);
+										}
+										s.sendMessage("§eYour teleportation request to " + tr.to.getName() + " has been cancelled.");
+										tr = null;
 									}
-									s.sendMessage("§eYour teleportation request to " + tr.to.getName() + " has been cancelled.");
-									tr = null;
-								}
-								if(tr == null)
-								{
-									final boolean here = c.getName().equals("tpahere");
-									synchronized(teleportationRequests)
+									if(tr == null)
 									{
-										teleportationRequests.add(new TeleportationRequest(p, t, here));
-									}
-									if(here)
-									{
-										t.sendMessage("§e" + p.getName() + " has requested you to teleport to them.");
+										final boolean here = c.getName().equals("tpahere");
+										synchronized(teleportationRequests)
+										{
+											teleportationRequests.add(new TeleportationRequest(p, t, here));
+										}
+										if(here)
+										{
+											t.sendMessage("§e" + p.getName() + " has requested you to teleport to them.");
+										}
+										else
+										{
+											t.sendMessage("§e" + p.getName() + " has requested to teleport to you.");
+										}
+										t.sendMessage("You can accept it using /tpaccept " + p.getName());
+										p.sendMessage("§aYou've sent a teleportation request to " + t.getName() + ".");
+										p.sendMessage("You can cancel it using /tpcancel.");
 									}
 									else
 									{
-										t.sendMessage("§e" + p.getName() + " has requested to teleport to you.");
+										p.sendMessage("§cI already got it the first time.");
 									}
-									t.sendMessage("You can accept it using /tpaccept " + p.getName());
-									p.sendMessage("§aYou've sent a teleportation request to " + t.getName() + ".");
-									p.sendMessage("You can cancel it using /tpcancel.");
 								}
 								else
 								{
-									p.sendMessage("§cI already got it the first time.");
+									s.sendMessage("Yes?");
 								}
 							}
 							else
 							{
-								s.sendMessage("Yes?");
+								s.sendMessage("§c" + t.getName() + " is missing the survivalutils.tpa permission, so they can't /tpaccept.");
 							}
 						}
 						else
@@ -303,7 +366,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 						}
 						else
 						{
-							s.sendMessage("§c'" + a[0].toLowerCase() + "' is not a valid warp point.");
+							s.sendMessage("§c'" + a[0].toLowerCase() + "' is not a warp point.");
 						}
 					}
 					else
@@ -317,41 +380,231 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				}
 				break;
 			case "warps":
-				MemorySection warps = (MemorySection) getConfig().get("warps");
-				if(warps != null)
+			{
+				final Map<String, Object> warps = getConfig().getConfigurationSection("warps").getValues(false);
+				if(warps.size() > 0)
 				{
-					Map<String, Object> values = warps.getValues(false);
-					if(values.size() > 0)
+					final StringBuilder message = new StringBuilder(warps.size() == 1 ? "There is 1 warp:" : "There are " + warps.size() + " warps:");
+					for(String name : warps.keySet())
 					{
-						final StringBuilder message = new StringBuilder("There ").append((values.size() == 1 ? "is 1 warp" : "are " + values.size() + " warps")).append(":");
-						for(String name : values.keySet())
-						{
-							message.append(" ").append(name);
-						}
-						s.sendMessage(message.toString());
+						message.append(" ").append(name);
 					}
-					else
-					{
-						s.sendMessage("§cThere are no warps.");
-					}
+					s.sendMessage(message.toString());
 				}
 				else
 				{
-					s.sendMessage("§cThere are no warps.");
+					s.sendMessage("There are no warps.");
 				}
 				break;
+			}
 			case "setwarp":
 				if(s instanceof Player)
 				{
 					if(a.length == 1)
 					{
-						getConfig().set("warps." + a[0].toLowerCase(), locationToString(((Player) s).getLocation()));
-						s.sendMessage("§aSuccessfully created warp point '" + a[0].toLowerCase() + "'.");
-						saveConfig();
+						if(getConfig().contains("warps." + a[0].toLowerCase()))
+						{
+							s.sendMessage("§cWarp point '" + a[0].toLowerCase() + "' already exists. Run /delwarp " + a[0].toLowerCase() + " first.");
+						}
+						else
+						{
+							getConfig().set("warps." + a[0].toLowerCase(), locationToString(((Player) s).getLocation()));
+							s.sendMessage("§aSuccessfully created warp point '" + a[0].toLowerCase() + "'.");
+							saveConfig();
+						}
 					}
 					else
 					{
 						s.sendMessage("§cSyntax: /setwarp <player>");
+					}
+				}
+				else
+				{
+					s.sendMessage("§cThis command is only for players.");
+				}
+				break;
+			case "delwarp":
+			{
+				if(a.length == 1)
+				{
+					final Map<String, Object> warps = getConfig().getConfigurationSection("warps").getValues(false);
+					if(warps.containsKey(a[0].toLowerCase()))
+					{
+						warps.remove(a[0].toLowerCase());
+						getConfig().set("warps", warps);
+						s.sendMessage("§aSuccessfully deleted warp point '" + a[0].toLowerCase() + "'.");
+						saveConfig();
+					}
+					else
+					{
+						s.sendMessage("§c'" + a[0].toLowerCase() + "' is not a warp point.");
+					}
+				}
+				else
+				{
+					s.sendMessage("§cSyntax: /delwarp <player>");
+				}
+				break;
+			}
+			case "home":
+				if(s instanceof Player)
+				{
+					if(a.length > 1)
+					{
+						s.sendMessage("§cSyntax: /home <name>");
+					}
+					else
+					{
+						final String homename;
+						if(a.length == 1)
+						{
+							homename = a[0].toLowerCase();
+						}
+						else
+						{
+							homename = "home";
+						}
+						final Player p = (Player) s;
+						final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(getConfigFile(p));
+						if(playerConfig.contains("homes"))
+						{
+							final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
+							if(homes.containsKey(homename))
+							{
+								p.teleport(stringToLocation((String) homes.get(homename)));
+							}
+							else if(homes.size() == 1)
+							{
+								p.teleport(stringToLocation((String) homes.values().iterator().next()));
+							}
+							else
+							{
+								p.sendMessage("§cYou don't have a home named '" + homename + "'.");
+							}
+						}
+						else
+						{
+							p.sendMessage("You're homeless. :^)");
+						}
+					}
+				}
+				else
+				{
+					s.sendMessage("§cThis command is only for players.");
+				}
+				break;
+			case "homes":
+				if(s instanceof Player)
+				{
+					final Player p = (Player) s;
+					final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(getConfigFile(p));
+					if(playerConfig.contains("homes"))
+					{
+						final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
+						if(homes.size() > 0)
+						{
+							final StringBuilder message = new StringBuilder("You have ").append(homes.size()).append("/").append(getHomeLimit(p)).append(" homes:");
+							for(String name : homes.keySet())
+							{
+								message.append(" ").append(name);
+							}
+							s.sendMessage(message.toString());
+						}
+						else
+						{
+							p.sendMessage("You're homeless. :^)");
+						}
+					}
+					else
+					{
+						p.sendMessage("You're homeless. :^)");
+					}
+				}
+				else
+				{
+					s.sendMessage("§cThis command is only for players.");
+				}
+				break;
+			case "sethome":
+				if(s instanceof Player)
+				{
+					if(a.length > 1)
+					{
+						s.sendMessage("§cSyntax: /sethome <name>");
+					}
+					else
+					{
+						final String homename;
+						if(a.length == 1)
+						{
+							homename = a[0].toLowerCase();
+						}
+						else
+						{
+							homename = "home";
+						}
+						final Player p = (Player) s;
+						final File playerConfigFile = getConfigFile(p);
+						final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(playerConfigFile);
+						if(getHomeLimit(p) == 0 || (playerConfig.contains("homes") && playerConfig.getConfigurationSection("homes").getValues(false).size() >= getHomeLimit(p)))
+						{
+							p.sendMessage("§cYou can't create more than " + getHomeLimit(p) + " homes.");
+						}
+						else if(playerConfig.contains("homes." + homename))
+						{
+							p.sendMessage("§cYou already have a home named '" + homename + "'. Run /delhome " + homename + " first.");
+						}
+						else
+						{
+							playerConfig.set("homes." + homename, locationToString(p.getLocation()));
+							try
+							{
+								playerConfig.save(playerConfigFile);
+							}
+							catch(IOException e)
+							{
+								throw new RuntimeException(e.getMessage());
+							}
+							s.sendMessage("§aSuccessfully created home '" + homename + "'.");
+						}
+					}
+				}
+				else
+				{
+					s.sendMessage("§cThis command is only for players.");
+				}
+				break;
+			case "delhome":
+				if(s instanceof Player)
+				{
+					if(a.length == 1)
+					{
+						final Player p = (Player) s;
+						final File playerConfigFile = getConfigFile(p);
+						final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(playerConfigFile);
+						if(playerConfig.contains("homes." + a[0].toLowerCase()))
+						{
+							final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
+							homes.remove(a[0].toLowerCase());
+							playerConfig.set("homes", homes);
+							try
+							{
+								playerConfig.save(playerConfigFile);
+							}
+							catch(IOException e)
+							{
+								throw new RuntimeException(e.getMessage());
+							}
+							s.sendMessage("§aSuccessfully deleted home '" + a[0].toLowerCase() + "'.");
+						}
+						else
+						{
+							p.sendMessage("§cYou don't have a home named '" + a[0].toLowerCase() + "'.");
+						}
+					}
+					else
+					{
+						s.sendMessage("§cSyntax: /delhome <name>");
 					}
 				}
 				else

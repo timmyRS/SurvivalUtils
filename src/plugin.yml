@@ -1,6 +1,6 @@
 ---
 name: SurvivalUtils
-version: 1.2
+version: 1.3
 main: de.timmyrs.SurvivalUtils
 author: timmyRS
 website: https://timmyrs.de
@@ -8,30 +8,28 @@ website: https://timmyrs.de
 commands:
   tpa:
     permission: survivalutils.tpa
-    usage: /tpa <player>
   tpahere:
     permission: survivalutils.tpa
-    usage: /tpa <player>
   tpaccept:
-    usage: /tpaccept <player>
+    permission: survivalutils.tpa
   tpcancel:
     permission: survivalutils.tpa
   warp:
     permission: survivalutils.warp
   warps:
-    aliases: [warplist]
     permission: survivalutils.warp
   setwarp:
     permission: survivalutils.setwarp
+  delwarp:
+    permission: sruvivalutils.delwarp
+  home:
+    permission: survivalutils.home
+  homes:
+    permission: survivalutils.home
+  sethome:
+    permission: survivalutils.home
+  delhome:
+    permission: survivalutils.home
   reloadsurvivalutils:
     permission: survivalutils.reload
 
-permissions:
-  survivalutils.tpa:
-    default: false
-  survivalutils.warp:
-    default: false
-  survivalutils.setwarp:
-    default: false
-  survivalutils.reload:
-    default: false
