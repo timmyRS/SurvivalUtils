@@ -24,7 +24,7 @@ Permission | Description
 `survivalutils.delwarp` | Allows the player to use `/delwarp`.
 `survivalutils.reload` | Allows the player to use `/survivalutils reload`.
 
-In order to allow you to disable any features you don't want, only OPs have these permissions by default.
+In order to allow you to disable any features you don't want, **only OPs have these permissions by default**.
 
 If you don't have a permission manager, you can use the `permissions.yml` as follows:
 
