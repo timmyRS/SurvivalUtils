@@ -8,7 +8,7 @@
 - Warps
 - Homes
 - Teleportation Requests (`tpa` & `tpahere`)
-- AFK Detection (to prevent AFK farms)
+- AFK Detections
 - Sleep Coordination
 
 ## Permissions
@@ -19,6 +19,7 @@ Permission | Description
 `survivalutils.tpa` | Allows the player to use `/tpa`, `/tpahere`, `/tpaccept`, and `/tpacancel`.
 `survivalutils.home` | Allows the player to use `/home`, `/sethome`, `/delhome`, and `/homes`.
 `survivalutils.homelimit.x` | Allows the player to use home limit 'x' as defined in the config.yml.
+`survivalutils.allowafk` | Allows the player to bypass all AFK detections.
 `survivalutils.wrap` | Allows the player to use `/warp` and `/warps`.
 `survivalutils.setwarp` | Allows the player to use `/setwarp`.
 `survivalutils.delwarp` | Allows the player to use `/delwarp`.

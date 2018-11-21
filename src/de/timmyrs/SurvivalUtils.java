@@ -1,5 +1,6 @@
 package de.timmyrs;
 
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
@@ -134,6 +135,11 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}, 100, 100);
 	}
 
+	private boolean canTeleport(Player p)
+	{
+		return p.isOnGround() || p.getGameMode() == GameMode.CREATIVE || p.getGameMode() == GameMode.SPECTATOR;
+	}
+
 	static long getTime()
 	{
 		return System.currentTimeMillis() / 1000L;
@@ -227,7 +233,10 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 						final long time = getTime();
 						for(Player p : getServer().getOnlinePlayers())
 						{
-							playersLastActivity.put(p, time);
+							if(!p.hasPermission("survivalutils.allowafk"))
+							{
+								playersLastActivity.put(p, time);
+							}
 						}
 						afkPlayers.clear();
 					}
@@ -245,7 +254,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerJoin(PlayerJoinEvent e)
 	{
-		if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
+		if((getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled")) && !e.getPlayer().hasPermission("survivalutils.allowafk"))
 		{
 			synchronized(playersLastActivity)
 			{
@@ -273,7 +282,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerMove(PlayerMoveEvent e)
 	{
-		if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
+		if((getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled")) && !e.getPlayer().hasPermission("survivalutils.allowafk"))
 		{
 			synchronized(playersLastActivity)
 			{
@@ -347,7 +356,14 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 			if(getServer().getPluginCommand(command) == null && getConfig().contains("warps." + command))
 			{
 				e.setCancelled(true);
-				e.getPlayer().teleport(stringToLocation(getConfig().getString("warps." + command)));
+				if(canTeleport(e.getPlayer()))
+				{
+					e.getPlayer().teleport(stringToLocation(getConfig().getString("warps." + command)));
+				}
+				else
+				{
+					e.getPlayer().sendMessage("§cYou may not teleport right now.");
+				}
 			}
 		}
 	}
@@ -531,13 +547,21 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				{
 					if(a.length == 1)
 					{
-						if(getConfig().contains("warps." + a[0].toLowerCase()))
+						final Player p = (Player) s;
+						if(canTeleport(p))
 						{
-							((Player) s).teleport(stringToLocation(getConfig().getString("warps." + a[0].toLowerCase())));
+							if(getConfig().contains("warps." + a[0].toLowerCase()))
+							{
+								p.teleport(stringToLocation(getConfig().getString("warps." + a[0].toLowerCase())));
+							}
+							else
+							{
+								p.sendMessage("§c'" + a[0].toLowerCase() + "' is not a warp point.");
+							}
 						}
 						else
 						{
-							s.sendMessage("§c'" + a[0].toLowerCase() + "' is not a warp point.");
+							p.sendMessage("§cYou may not teleport right now.");
 						}
 					}
 					else
@@ -637,26 +661,33 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 							homename = "home";
 						}
 						final Player p = (Player) s;
-						final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(getConfigFile(p));
-						if(playerConfig.contains("homes"))
+						if(canTeleport(p))
 						{
-							final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
-							if(homes.containsKey(homename))
+							final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(getConfigFile(p));
+							if(playerConfig.contains("homes"))
 							{
-								p.teleport(stringToLocation((String) homes.get(homename)));
-							}
-							else if(homes.size() == 1)
-							{
-								p.teleport(stringToLocation((String) homes.values().iterator().next()));
+								final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
+								if(homes.containsKey(homename))
+								{
+									p.teleport(stringToLocation((String) homes.get(homename)));
+								}
+								else if(homes.size() == 1)
+								{
+									p.teleport(stringToLocation((String) homes.values().iterator().next()));
+								}
+								else
+								{
+									p.sendMessage("§cYou don't have a home named '" + homename + "'.");
+								}
 							}
 							else
 							{
-								p.sendMessage("§cYou don't have a home named '" + homename + "'.");
+								p.sendMessage("You're homeless. :^)");
 							}
 						}
 						else
 						{
-							p.sendMessage("You're homeless. :^)");
+							p.sendMessage("§cYou may not teleport right now.");
 						}
 					}
 				}
