@@ -59,14 +59,16 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		{
 			throw new RuntimeException("Failed to create " + playerDataDir.getPath());
 		}
-		getConfig().addDefault("sleepCoordination.enabled", true);
-		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
-		getConfig().addDefault("sleepCoordination.intervalSeconds", 20);
 		getConfig().addDefault("homeLimits.default", 10);
 		getConfig().addDefault("homeLimits.op", 100);
-		getConfig().addDefault("afkDetection.enabled", false);
-		getConfig().addDefault("afkDetection.kick", false);
-		getConfig().addDefault("afkDetection.kickMessage", "You have been kicked for being AFK. Feel free to reconnect now that you're no longer AFK.");
+		getConfig().addDefault("antiAFKFarming.enabled", false);
+		getConfig().addDefault("antiAFKFarming.seconds", 60);
+		getConfig().addDefault("afkKick.enabled", false);
+		getConfig().addDefault("afkKick.seconds", 300);
+		getConfig().addDefault("afkKick.message", "You have been kicked for being AFK. Feel free to reconnect now that you're no longer AFK.");
+		getConfig().addDefault("sleepCoordination.enabled", false);
+		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
+		getConfig().addDefault("sleepCoordination.intervalSeconds", 20);
 		getConfig().addDefault("createWarpCommands", false);
 		getConfig().addDefault("warps", new HashMap<String, Object>());
 		getConfig().options().copyDefaults(true);
@@ -102,7 +104,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					}
 				}
 			}
-			if(getConfig().getBoolean("afkDetection.enabled"))
+			if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
 			{
 				final Map<Player, Long> _playersLastActivity;
 				synchronized(playersLastActivity)
@@ -111,16 +113,17 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				}
 				synchronized(afkPlayers)
 				{
-					final long afkTime = getTime() - 60;
+					final long kickTime = getTime() - getConfig().getInt("afkKick.seconds");
+					final long afkTime = getTime() - getConfig().getInt("antiAFKFarming.seconds");
 					for(Map.Entry<Player, Long> entry : _playersLastActivity.entrySet())
 					{
-						if(!afkPlayers.contains(entry.getKey()) && entry.getValue() < afkTime)
+						if(getConfig().getBoolean("afkKick.enabled") && entry.getValue() < kickTime)
 						{
-							if(getConfig().getBoolean("afkDetection.kick"))
-							{
-								entry.getKey().kickPlayer(getConfig().getString("afkDetection.kickMessage").replace("&", "§"));
-							}
-							else
+							entry.getKey().kickPlayer(getConfig().getString("afkKick.message").replace("&", "§"));
+						}
+						else if(getConfig().getBoolean("antiAFKFarming.enabled") && entry.getValue() < afkTime)
+						{
+							if(!afkPlayers.contains(entry.getKey()))
 							{
 								afkPlayers.add(entry.getKey());
 							}
@@ -217,7 +220,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		{
 			synchronized(afkPlayers)
 			{
-				if(getConfig().getBoolean("afkDetection.enabled"))
+				if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
 				{
 					if(playersLastActivity.size() == 0)
 					{
@@ -242,7 +245,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerJoin(PlayerJoinEvent e)
 	{
-		if(getConfig().getBoolean("afkDetection.enabled"))
+		if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
 		{
 			synchronized(playersLastActivity)
 			{
@@ -254,7 +257,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerQuit(PlayerQuitEvent e)
 	{
-		if(getConfig().getBoolean("afkDetection.enabled"))
+		if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
 		{
 			synchronized(playersLastActivity)
 			{
@@ -270,7 +273,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerMove(PlayerMoveEvent e)
 	{
-		if(getConfig().getBoolean("afkDetection.enabled"))
+		if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
 		{
 			synchronized(playersLastActivity)
 			{
@@ -286,7 +289,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onEntityDamageByEntity(EntityDamageByEntityEvent e)
 	{
-		if(e.getDamager() instanceof Player && getConfig().getBoolean("afkDetection.enabled"))
+		if(e.getDamager() instanceof Player && getConfig().getBoolean("antiAFKFarming.enabled"))
 		{
 			final Player p = (Player) e.getDamager();
 			synchronized(afkPlayers)
@@ -302,7 +305,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerInteract(PlayerInteractEvent e)
 	{
-		if(getConfig().getBoolean("afkDetection.enabled"))
+		if(getConfig().getBoolean("antiAFKFarming.enabled"))
 		{
 			synchronized(afkPlayers)
 			{
