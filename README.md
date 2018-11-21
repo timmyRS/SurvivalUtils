@@ -1,29 +1,28 @@
 # SurvivalUtils
 
-Some essential features to improve the experience on your survival server.
+ Improve your Survival server's experience with trading, warps, homes, tpa, and more!
 
 ## Features
 
-- Sleep Coordination
-- Teleportation Requests (`tpa` & `tpahere`)
-- Homes
+- Trading (Work in Progress)
 - Warps
-
-### Planned Features
-
-- Trading
+- Homes
+- Teleportation Requests (`tpa` & `tpahere`)
+- AFK Detection (to prevent AFK farms)
+- Sleep Coordination
 
 ## Permissions
 
 Permission | Description
 -----------|-----------
+`survivalutils.trade` | Allows the player to use `/trade`.
 `survivalutils.tpa` | Allows the player to use `/tpa`, `/tpahere`, `/tpaccept`, and `/tpacancel`.
 `survivalutils.home` | Allows the player to use `/home`, `/sethome`, `/delhome`, and `/homes`.
-`survivalutils.homelimit<2-4>` | Allows the player to use home limit 2, 3, or 4, as defined in the config.yml.
-`survivalutils.wrap` | Allows the player to warp to a warp point using `/warp` and list all using `/warps`.
-`survivalutils.setwarp` | Allows the player to set a warp point using `/setwarp`.
-`survivalutils.delwarp` | Allows the player to delete a warp point using `/delwarp`.
-`survivalutils.reload` | Allows the player to reload the configuration using `/reloadsurvivalutils`.
+`survivalutils.homelimit.x` | Allows the player to use home limit 'x' as defined in the config.yml.
+`survivalutils.wrap` | Allows the player to use `/warp` and `/warps`.
+`survivalutils.setwarp` | Allows the player to use `/setwarp`.
+`survivalutils.delwarp` | Allows the player to use `/delwarp`.
+`survivalutils.reload` | Allows the player to use `/survivalutils reload`.
 
 In order to allow you to disable any features you don't want, only OPs have these permissions by default.
 
@@ -32,6 +31,7 @@ If you don't have a permission manager, you can use the `permissions.yml` as fol
     default:
       default: true
       children:
+        survivalutils.trade: true
         survivalutils.tpa: true
         survivalutils.warp: true
         survivalutils.home: true

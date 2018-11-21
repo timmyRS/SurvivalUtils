@@ -9,9 +9,14 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerBedLeaveEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -26,6 +31,8 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	private File playerDataDir;
 	static final ArrayList<TradeRequest> tradeRequests = new ArrayList<>();
 	static final ArrayList<TeleportationRequest> teleportationRequests = new ArrayList<>();
+	private final HashMap<Player, Long> playersLastActivity = new HashMap<>();
+	private final ArrayList<Player> afkPlayers = new ArrayList<>();
 	private final ArrayList<Player> sleepingPlayers = new ArrayList<>();
 	private int sleepCoordinationTask = -1;
 
@@ -56,9 +63,10 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
 		getConfig().addDefault("sleepCoordination.intervalSeconds", 20);
 		getConfig().addDefault("homeLimits.default", 10);
-		getConfig().addDefault("homeLimits.2", 10);
-		getConfig().addDefault("homeLimits.3", 10);
-		getConfig().addDefault("homeLimits.4", 10);
+		getConfig().addDefault("homeLimits.op", 100);
+		getConfig().addDefault("afkDetection.enabled", false);
+		getConfig().addDefault("afkDetection.kick", false);
+		getConfig().addDefault("afkDetection.kickMessage", "You have been kicked for being AFK. Feel free to reconnect now that you're no longer AFK.");
 		getConfig().addDefault("createWarpCommands", false);
 		getConfig().addDefault("warps", new HashMap<String, Object>());
 		getConfig().options().copyDefaults(true);
@@ -81,10 +89,10 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		getServer().getPluginManager().registerEvents(this, this);
 		getServer().getScheduler().scheduleSyncRepeatingTask(this, ()->
 		{
-			final int time = Math.toIntExact(System.currentTimeMillis() / 1000L);
 			synchronized(teleportationRequests)
 			{
 				final ArrayList<TeleportationRequest> _teleportationRequests = new ArrayList<>(teleportationRequests);
+				final long time = getTime();
 				for(TeleportationRequest tr : _teleportationRequests)
 				{
 					if(tr.expires < time)
@@ -94,7 +102,38 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					}
 				}
 			}
-		}, 200, 200);
+			if(getConfig().getBoolean("afkDetection.enabled"))
+			{
+				final Map<Player, Long> _playersLastActivity;
+				synchronized(playersLastActivity)
+				{
+					_playersLastActivity = new HashMap<>(playersLastActivity);
+				}
+				synchronized(afkPlayers)
+				{
+					final long afkTime = getTime() - 60;
+					for(Map.Entry<Player, Long> entry : _playersLastActivity.entrySet())
+					{
+						if(!afkPlayers.contains(entry.getKey()) && entry.getValue() < afkTime)
+						{
+							if(getConfig().getBoolean("afkDetection.kick"))
+							{
+								entry.getKey().kickPlayer(getConfig().getString("afkDetection.kickMessage").replace("&", "§"));
+							}
+							else
+							{
+								afkPlayers.add(entry.getKey());
+							}
+						}
+					}
+				}
+			}
+		}, 100, 100);
+	}
+
+	static long getTime()
+	{
+		return System.currentTimeMillis() / 1000L;
 	}
 
 	private File getConfigFile(Player p)
@@ -104,17 +143,17 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 
 	private int getHomeLimit(Player p)
 	{
-		if(p.hasPermission("survivalutils.homelimit4"))
+		if(p.isOp())
 		{
-			return getConfig().getInt("homeLimits.4");
+			return getConfig().getInt("homeLimits.op");
 		}
-		if(p.hasPermission("survivalutils.homelimit3"))
+		final Map<String, Object> limits = getConfig().getConfigurationSection("homeLimits").getValues(false);
+		for(String limit : limits.keySet())
 		{
-			return getConfig().getInt("homeLimits.3");
-		}
-		if(p.hasPermission("survivalutils.homelimit2"))
-		{
-			return getConfig().getInt("homeLimits.2");
+			if(!limit.equals("default") && !limit.equals("op") && p.hasPermission("survivalutils.homelimit." + limit))
+			{
+				return getConfig().getInt("homeLimits." + limit);
+			}
 		}
 		return getConfig().getInt("homeLimits.default");
 	}
@@ -174,7 +213,105 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		{
 			sleepCoordinationTask = -1;
 		}
+		synchronized(playersLastActivity)
+		{
+			synchronized(afkPlayers)
+			{
+				if(getConfig().getBoolean("afkDetection.enabled"))
+				{
+					if(playersLastActivity.size() == 0)
+					{
+						final long time = getTime();
+						for(Player p : getServer().getOnlinePlayers())
+						{
+							playersLastActivity.put(p, time);
+						}
+						afkPlayers.clear();
+					}
+				}
+				else
+				{
+					playersLastActivity.clear();
+					afkPlayers.clear();
+				}
+			}
+		}
 		saveConfig();
+	}
+
+	@EventHandler
+	public void onPlayerJoin(PlayerJoinEvent e)
+	{
+		if(getConfig().getBoolean("afkDetection.enabled"))
+		{
+			synchronized(playersLastActivity)
+			{
+				playersLastActivity.put(e.getPlayer(), getTime());
+			}
+		}
+	}
+
+	@EventHandler
+	public void onPlayerQuit(PlayerQuitEvent e)
+	{
+		if(getConfig().getBoolean("afkDetection.enabled"))
+		{
+			synchronized(playersLastActivity)
+			{
+				playersLastActivity.remove(e.getPlayer());
+			}
+			synchronized(afkPlayers)
+			{
+				afkPlayers.remove(e.getPlayer());
+			}
+		}
+	}
+
+	@EventHandler
+	public void onPlayerMove(PlayerMoveEvent e)
+	{
+		if(getConfig().getBoolean("afkDetection.enabled"))
+		{
+			synchronized(playersLastActivity)
+			{
+				playersLastActivity.put(e.getPlayer(), getTime());
+			}
+			synchronized(afkPlayers)
+			{
+				afkPlayers.remove(e.getPlayer());
+			}
+		}
+	}
+
+	@EventHandler
+	public void onEntityDamageByEntity(EntityDamageByEntityEvent e)
+	{
+		if(e.getDamager() instanceof Player && getConfig().getBoolean("afkDetection.enabled"))
+		{
+			final Player p = (Player) e.getDamager();
+			synchronized(afkPlayers)
+			{
+				if(afkPlayers.contains(p))
+				{
+					e.setCancelled(true);
+				}
+			}
+		}
+	}
+
+	@EventHandler
+	public void onPlayerInteract(PlayerInteractEvent e)
+	{
+		if(getConfig().getBoolean("afkDetection.enabled"))
+		{
+			synchronized(afkPlayers)
+			{
+				if(afkPlayers.contains(e.getPlayer()))
+				{
+					e.setCancelled(true);
+				}
+			}
+		}
 	}
 
 	@EventHandler
@@ -229,7 +366,22 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				}
 				break;
 			case "trade":
-
+				if(s instanceof Player)
+				{
+					if(a.length == 1)
+					{
+						// TODO
+						s.sendMessage("§eTrading is coming soon!");
+					}
+					else
+					{
+						s.sendMessage("§cSyntax: /trade <player>");
+					}
+				}
+				else
+				{
+					s.sendMessage("§cThis command is only for players.");
+				}
 				break;
 			case "tpa":
 			case "tpahere":
@@ -636,6 +788,14 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 
 class TradeRequest
 {
+	final Player from;
+	final Player to;
+
+	TradeRequest(Player from, Player to)
+	{
+		this.from = from;
+		this.to = to;
+	}
 }
 
 class TeleportationRequest
@@ -643,14 +803,14 @@ class TeleportationRequest
 	final Player from;
 	final Player to;
 	final boolean here;
-	final int expires;
+	final long expires;
 
 	TeleportationRequest(Player from, Player to, boolean here)
 	{
 		this.from = from;
 		this.to = to;
 		this.here = here;
-		this.expires = Math.toIntExact(System.currentTimeMillis() / 1000L) + 60;
+		this.expires = SurvivalUtils.getTime() + 60;
 	}
 
 	static TeleportationRequest get(Player from, Player to)
