@@ -36,3 +36,10 @@ If you don't have a permission manager, you can use the `permissions.yml` as fol
         survivalutils.tpa: true
         survivalutils.warp: true
         survivalutils.home: true
+
+Similarly, you can use the `permissions.yml` to remove permissions from OPs:
+
+    op:
+      default: 'op'
+      children:
+        survivalutils.allowafk: false
