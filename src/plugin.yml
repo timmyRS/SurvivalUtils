@@ -1,14 +1,14 @@
 ---
 name: SurvivalUtils
-version: 1.4-dev
+version: 1.3.1
 main: de.timmyrs.SurvivalUtils
 author: timmyRS
 website: https://timmyrs.de
 
 commands:
   survivalutils: {}
-  trade:
-    permission: survivalutils.trade
+  # trade:
+  #   permission: survivalutils.trade
   tpa:
     permission: survivalutils.tpa
   tpahere:
@@ -22,9 +22,9 @@ commands:
   warps:
     permission: survivalutils.warp
   setwarp:
-    permission: survivalutils.setwarp
+    permission: survivalutils.managewarps
   delwarp:
-    permission: sruvivalutils.delwarp
+    permission: sruvivalutils.managewarps
   home:
     permission: survivalutils.home
   homes:

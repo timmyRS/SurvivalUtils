@@ -56,16 +56,12 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	public void onEnable()
 	{
 		playerDataDir = new File(getDataFolder(), "playerdata");
-		if(!playerDataDir.exists() && !playerDataDir.mkdir())
-		{
-			throw new RuntimeException("Failed to create " + playerDataDir.getPath());
-		}
 		getConfig().addDefault("homeLimits.default", 10);
 		getConfig().addDefault("homeLimits.op", 100);
 		getConfig().addDefault("antiAFKFarming.enabled", false);
-		getConfig().addDefault("antiAFKFarming.seconds", 60);
+		getConfig().addDefault("antiAFKFarming.seconds", 30);
 		getConfig().addDefault("afkKick.enabled", false);
-		getConfig().addDefault("afkKick.seconds", 300);
+		getConfig().addDefault("afkKick.seconds", 900);
 		getConfig().addDefault("afkKick.message", "You have been kicked for being AFK. Feel free to reconnect now that you're no longer AFK.");
 		getConfig().addDefault("sleepCoordination.enabled", false);
 		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
@@ -76,7 +72,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		saveConfig();
 		reloadSurvivalUtilsConfig();
 		getCommand("survivalutils").setExecutor(this);
-		getCommand("trade").setExecutor(this);
+		//getCommand("trade").setExecutor(this);
 		getCommand("tpa").setExecutor(this);
 		getCommand("tpahere").setExecutor(this);
 		getCommand("tpaccept").setExecutor(this);
@@ -147,6 +143,10 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 
 	private File getConfigFile(Player p)
 	{
+		if(!playerDataDir.exists() && !playerDataDir.mkdir())
+		{
+			throw new RuntimeException("Failed to create " + playerDataDir.getPath());
+		}
 		return new File(playerDataDir, p.getUniqueId().toString().replace("-", "") + ".yml");
 	}
 
@@ -350,19 +350,20 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent e)
 	{
-		if(getConfig().getBoolean("createWarpCommands"))
+		final Player p = e.getPlayer();
+		if(p.hasPermission("survivalutils.warp") && getConfig().getBoolean("createWarpCommands"))
 		{
 			final String command = e.getMessage().substring(1).split(" ")[0].toLowerCase();
 			if(getServer().getPluginCommand(command) == null && getConfig().contains("warps." + command))
 			{
 				e.setCancelled(true);
-				if(canTeleport(e.getPlayer()))
+				if(canTeleport(p))
 				{
-					e.getPlayer().teleport(stringToLocation(getConfig().getString("warps." + command)));
+					p.teleport(stringToLocation(getConfig().getString("warps." + command)));
 				}
 				else
 				{
-					e.getPlayer().sendMessage("§cYou may not teleport right now.");
+					p.sendMessage("§cYou may not teleport right now.");
 				}
 			}
 		}
