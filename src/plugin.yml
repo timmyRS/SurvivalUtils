@@ -1,6 +1,6 @@
 ---
 name: SurvivalUtils
-version: 1.3.1
+version: 1.4
 main: de.timmyrs.SurvivalUtils
 author: timmyRS
 website: https://timmyrs.de
@@ -10,13 +10,15 @@ commands:
   # trade:
   #   permission: survivalutils.trade
   tpa:
-    permission: survivalutils.tpa
+    permission: survivalutils.tpa.tpa
   tpahere:
-    permission: survivalutils.tpa
+    permission: survivalutils.tpa.tpahere
   tpaccept:
-    permission: survivalutils.tpa
+    aliases: [tpaaccept]
+    permission: survivalutils.tpa.tpaccept
   tpcancel:
-    permission: survivalutils.tpa
+    aliases: [tpacancel]
+    permission: survivalutils.tpa.tpcancel
   warp:
     permission: survivalutils.warp
   warps:
@@ -24,7 +26,7 @@ commands:
   setwarp:
     permission: survivalutils.managewarps
   delwarp:
-    permission: sruvivalutils.managewarps
+    permission: survivalutils.managewarps
   home:
     permission: survivalutils.home
   homes:
@@ -33,3 +35,14 @@ commands:
     permission: survivalutils.home
   delhome:
     permission: survivalutils.home
+
+permissions:
+  survivalutils.tpa:
+    children:
+      survivalutils.tpa.*: true
+  survivalutils.tpa.*:
+    children:
+      survivalutils.tpa.tpa: true
+      survivalutils.tpa.tpahere: true
+      survivalutils.tpa.tpaccept: true
+      survivalutils.tpa.tpcancel: true

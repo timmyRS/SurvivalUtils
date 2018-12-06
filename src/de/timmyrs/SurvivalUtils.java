@@ -3,13 +3,18 @@ package de.timmyrs;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.block.Sign;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerBedLeaveEvent;
@@ -30,11 +35,12 @@ import java.util.Map;
 public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecutor
 {
 	private File playerDataDir;
-	static final ArrayList<TradeRequest> tradeRequests = new ArrayList<>();
+	//static final ArrayList<TradeRequest> tradeRequests = new ArrayList<>();
 	static final ArrayList<TeleportationRequest> teleportationRequests = new ArrayList<>();
 	private final HashMap<Player, Long> playersLastActivity = new HashMap<>();
 	private final ArrayList<Player> afkPlayers = new ArrayList<>();
 	private final ArrayList<Player> sleepingPlayers = new ArrayList<>();
+	private final ArrayList<Player> colorSignInformed = new ArrayList<>();
 	private int sleepCoordinationTask = -1;
 
 	private Location stringToLocation(String string)
@@ -67,6 +73,8 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
 		getConfig().addDefault("sleepCoordination.intervalSeconds", 20);
 		getConfig().addDefault("createWarpCommands", false);
+		getConfig().addDefault("warpSigns.line", "[Warp]");
+		getConfig().addDefault("warpSigns.color", "5");
 		getConfig().addDefault("warps", new HashMap<String, Object>());
 		getConfig().options().copyDefaults(true);
 		saveConfig();
@@ -251,7 +259,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		saveConfig();
 	}
 
-	@EventHandler
+	@EventHandler(priority = EventPriority.LOW)
 	public void onPlayerJoin(PlayerJoinEvent e)
 	{
 		if((getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled")) && !e.getPlayer().hasPermission("survivalutils.allowafk"))
@@ -263,7 +271,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
-	@EventHandler
+	@EventHandler(priority = EventPriority.LOW)
 	public void onPlayerQuit(PlayerQuitEvent e)
 	{
 		if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
@@ -276,10 +284,14 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 			{
 				afkPlayers.remove(e.getPlayer());
 			}
+			synchronized(colorSignInformed)
+			{
+				colorSignInformed.remove(e.getPlayer());
+			}
 		}
 	}
 
-	@EventHandler
+	@EventHandler(priority = EventPriority.LOW)
 	public void onPlayerMove(PlayerMoveEvent e)
 	{
 		if((getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled")) && !e.getPlayer().hasPermission("survivalutils.allowafk"))
@@ -295,7 +307,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
-	@EventHandler
+	@EventHandler(priority = EventPriority.HIGH)
 	public void onEntityDamageByEntity(EntityDamageByEntityEvent e)
 	{
 		if(e.getDamager() instanceof Player && getConfig().getBoolean("antiAFKFarming.enabled"))
@@ -311,7 +323,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
-	@EventHandler
+	@EventHandler(priority = EventPriority.HIGH)
 	public void onPlayerInteract(PlayerInteractEvent e)
 	{
 		if(getConfig().getBoolean("antiAFKFarming.enabled"))
@@ -321,12 +333,62 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				if(afkPlayers.contains(e.getPlayer()))
 				{
 					e.setCancelled(true);
+					return;
+				}
+			}
+		}
+		if(e.getAction() == Action.RIGHT_CLICK_BLOCK && e.getClickedBlock().getState() instanceof Sign)
+		{
+			final Sign s = (Sign) e.getClickedBlock().getState();
+			if(s.getLine(0).equals("§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line")))
+			{
+				final String w = s.getLine(1).toLowerCase();
+				if((e.getPlayer().hasPermission("survivalutils.warps") || e.getPlayer().hasPermission("survivalutils.warps." + w)) && getConfig().contains("warps." + w))
+				{
+					e.setCancelled(true);
+					e.getPlayer().teleport(stringToLocation(getConfig().getString("warps." + w)));
 				}
 			}
 		}
 	}
 
-	@EventHandler
+	@EventHandler(priority = EventPriority.LOW)
+	public void onBlockPlace(BlockPlaceEvent e)
+	{
+		if(e.getPlayer().hasPermission("survivalutils.coloredsigns") && e.getBlockPlaced().getState() instanceof Sign)
+		{
+			synchronized(colorSignInformed)
+			{
+				if(colorSignInformed.contains(e.getPlayer()))
+				{
+					return;
+				}
+				colorSignInformed.add(e.getPlayer());
+			}
+			e.getPlayer().sendMessage("§aYou can use color codes on your sign with '&'!");
+			e.getPlayer().sendMessage("For a list of color codes visit https://wiki.vg/Chat#Colors");
+			e.getPlayer().sendMessage("If you want to use '&', use '&&'");
+		}
+	}
+
+	@EventHandler(priority = EventPriority.NORMAL)
+	public void onSignChange(SignChangeEvent e)
+	{
+		if(e.getPlayer().hasPermission("survivalutils.coloredsigns"))
+		{
+			for(int i = 0; i < 4; i++)
+			{
+				e.setLine(i, e.getLine(i).replace("&", "§").replace("§§", "&"));
+			}
+		}
+		if(e.getPlayer().hasPermission("survivalutils.warpsigns") && e.getLine(0).trim().equalsIgnoreCase(getConfig().getString("warpSigns.line")))
+		{
+			e.setLine(0, "§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line"));
+			e.setLine(1, e.getLine(1).trim());
+		}
+	}
+
+	@EventHandler(priority = EventPriority.LOW)
 	public void onPlayerBedEnter(PlayerBedEnterEvent e)
 	{
 		synchronized(sleepingPlayers)
@@ -338,7 +400,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
-	@EventHandler
+	@EventHandler(priority = EventPriority.LOW)
 	public void onPlayerBedLeave(PlayerBedLeaveEvent e)
 	{
 		synchronized(sleepingPlayers)
@@ -347,14 +409,14 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
-	@EventHandler
+	@EventHandler(priority = EventPriority.HIGH)
 	public void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent e)
 	{
 		final Player p = e.getPlayer();
 		if(p.hasPermission("survivalutils.warp") && getConfig().getBoolean("createWarpCommands"))
 		{
 			final String command = e.getMessage().substring(1).split(" ")[0].toLowerCase();
-			if(getServer().getPluginCommand(command) == null && getConfig().contains("warps." + command))
+			if((p.hasPermission("survivalutils.warps") || p.hasPermission("survivalutils.warps." + command)) && getServer().getPluginCommand(command) == null && getConfig().contains("warps." + command))
 			{
 				e.setCancelled(true);
 				if(canTeleport(p))
@@ -391,7 +453,6 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					if(a.length == 1)
 					{
 						// TODO
-						s.sendMessage("§eTrading is coming soon!");
 					}
 					else
 					{
@@ -551,13 +612,14 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 						final Player p = (Player) s;
 						if(canTeleport(p))
 						{
-							if(getConfig().contains("warps." + a[0].toLowerCase()))
+							final String w = a[0].toLowerCase();
+							if((p.hasPermission("survivalutils.warps") || p.hasPermission("survivalutils.warps." + w)) && getConfig().contains("warps." + w))
 							{
-								p.teleport(stringToLocation(getConfig().getString("warps." + a[0].toLowerCase())));
+								p.teleport(stringToLocation(getConfig().getString("warps." + w)));
 							}
 							else
 							{
-								p.sendMessage("§c'" + a[0].toLowerCase() + "' is not a warp point.");
+								p.sendMessage("§c'" + w + "' is not a warp point.");
 							}
 						}
 						else
@@ -578,18 +640,23 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 			case "warps":
 			{
 				final Map<String, Object> warps = getConfig().getConfigurationSection("warps").getValues(false);
-				if(warps.size() > 0)
+				int i = 0;
+				final StringBuilder message = new StringBuilder();
+				for(String name : warps.keySet())
 				{
-					final StringBuilder message = new StringBuilder(warps.size() == 1 ? "There is 1 warp:" : "There are " + warps.size() + " warps:");
-					for(String name : warps.keySet())
+					if(s.hasPermission("survivalutils.warps") || s.hasPermission("survivalutils.warps." + name))
 					{
 						message.append(" ").append(name);
+						i++;
 					}
-					s.sendMessage(message.toString());
+				}
+				if(i == 0)
+				{
+					s.sendMessage("There are no warps.");
 				}
 				else
 				{
-					s.sendMessage("There are no warps.");
+					s.sendMessage((i == 1 ? "There is 1 warp:" : "There are " + i + " warps:") + message.toString());
 				}
 				break;
 			}
@@ -598,14 +665,15 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				{
 					if(a.length == 1)
 					{
-						if(getConfig().contains("warps." + a[0].toLowerCase()))
+						final String w = a[0].toLowerCase();
+						if(getConfig().contains("warps." + w))
 						{
-							s.sendMessage("§cWarp point '" + a[0].toLowerCase() + "' already exists. Run /delwarp " + a[0].toLowerCase() + " first.");
+							s.sendMessage("§cWarp point '" + w + "' already exists. Run /delwarp " + w + " first.");
 						}
 						else
 						{
-							getConfig().set("warps." + a[0].toLowerCase(), locationToString(((Player) s).getLocation()));
-							s.sendMessage("§aSuccessfully created warp point '" + a[0].toLowerCase() + "'.");
+							getConfig().set("warps." + w, locationToString(((Player) s).getLocation()));
+							s.sendMessage("§aSuccessfully created warp point '" + w + "'.");
 							saveConfig();
 						}
 					}
@@ -624,17 +692,18 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				if(a.length == 1)
 				{
 					final Map<String, Object> warps = getConfig().getConfigurationSection("warps").getValues(false);
-					if(warps.containsKey(a[0].toLowerCase()))
+					final String w = a[0].toLowerCase();
+					if(warps.containsKey(w))
 					{
-						warps.remove(a[0].toLowerCase());
+						warps.remove(w);
 						getConfig().set("warps", warps);
 						saveConfig();
 						reloadConfig();
-						s.sendMessage("§aSuccessfully deleted warp point '" + a[0].toLowerCase() + "'.");
+						s.sendMessage("§aSuccessfully deleted warp point '" + w + "'.");
 					}
 					else
 					{
-						s.sendMessage("§c'" + a[0].toLowerCase() + "' is not a warp point.");
+						s.sendMessage("§c'" + w + "' is not a warp point.");
 					}
 				}
 				else
@@ -821,6 +890,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	}
 }
 
+/*
 class TradeRequest
 {
 	final Player from;
@@ -832,6 +902,7 @@ class TradeRequest
 		this.to = to;
 	}
 }
+*/
 
 class TeleportationRequest
 {

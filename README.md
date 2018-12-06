@@ -1,39 +1,52 @@
 # SurvivalUtils
 
-Improve your Survival server's experience with trading, warps, homes, tpa, and more!
+Essential features to improve the experience on your survival server:
 
-## Features
-
-- Trading (Work in Progress)
 - Warps
+    - Warp Signs
+    - Per-Warp Permissions
 - Homes
-- Teleportation Requests (`tpa` & `tpahere`)
+    - Infinite Configurable Limits
+- Teleportation Requests (`tpa`)
+    - `tpahere`
+    - Cancellable
+- Colored Signs
 - AFK Detections
+    - Anti-AFK Farming
+    - Enhanced AFK Kick
 - Sleep Coordination
+
+All features are disabled or OP-only by default to allow for maximum configurability.
 
 ## Permissions
 
-Permission | Description
------------|-----------
-`survivalutils.tpa` | Allows the player to use `/tpa`, `/tpahere`, `/tpaccept`, and `/tpacancel`.
-`survivalutils.home` | Allows the player to use `/home`, `/sethome`, `/delhome`, and `/homes`.
-`survivalutils.homelimit.x` | Allows the player to use home limit 'x' as defined in the config.yml.
-`survivalutils.allowafk` | Allows the player to bypass all AFK detections.
-`survivalutils.warp` | Allows the player to use `/warp` and `/warps`.
-`survivalutils.managewarps` | Allows the player to use `/setwarp` and `/delwarp`.
-`survivalutils.reload` | Allows the player to use `/survivalutils reload`.
+- `survivalutils.tpa` grants all `survivalutils.tpa.*` permissions:
+    - `survivalutils.tpa.tpa` allows the player to use `/tpa`.
+    - `survivalutils.tpa.tpahere` allows the player to use `/tpahere`.
+    - `survivalutils.tpa.tpaccept` allows the player to use `/tpaccept`.
+    - `survivalutils.tpa.tpcancel` allows the player to use `/tpcancel`.
+- `survivalutils.home` allows the player to use `/home`, `/sethome`, `/delhome`, and `/homes`.
+- `survivalutils.homelimit.x` allows the player to use home limit 'x' as defined in the config.yml.
+- `survivalutils.allowafk` allows the player to bypass all AFK detections.
+- `survivalutils.warp` allows the player to use `/warp`, `/warps`, and warp commands, if enabled.
+- `survivalutils.warps` allows the player to warp everywhere.
+- `survivalutils.warps.x` allows the player to warp to warp 'x'.
+- `survivalutils.warpsigns` allows the player to place warp signs.
+- `survivalutils.managewarps` allows the player to use `/setwarp` and `/delwarp`.
+- `survivalutils.coloredsigns` allows the player to use colors on signs.
+- `survivalutils.reload` allows the player to use `/survivalutils reload`.
 
-In order to allow you to disable any features you don't want, **only OPs have these permissions by default**.
+Remember: All permissions are OP-only by default to allow for maximum configurability.
 
 If you don't have a permission manager, you can use the permissions.yml as follows:
 
     default:
       default: true
       children:
-        survivalutils.trade: true
         survivalutils.tpa: true
-        survivalutils.warp: true
         survivalutils.home: true
+        survivalutils.warp: true
+        survivalutils.warps: true
 
 Similarly, you can use the permissions.yml to remove permissions from OPs:
 
@@ -41,3 +54,28 @@ Similarly, you can use the permissions.yml to remove permissions from OPs:
       default: 'op'
       children:
         survivalutils.allowafk: false
+
+## Configuration
+
+- `homeLimits`
+    - `default`: The default home limit
+    - `op`: The home limit for OPs
+    - Other keys can be used to define custom permissions. For example, if you place `vip: 20` in here, players with the `survivalutils.homelimit.vip` permissions can create up to 20 homes.
+- `antiAFKFarming`
+    - `enabled`: Prevent AFK farming? (true/false)
+    - `seconds`: After `seconds` seconds of not moving, a player will be prevented from attacking and interacting.
+- `afkKick`
+    - `enabled`: Enable AFK kicking? (true/false)
+    - `seconds`: After `seconds` seconds of not moving, a player will be kicked.
+    - `message`: The kick reason message.
+- `sleepCoordination`
+    - `enabled`: Enable Sleep Coordination? (true/false)
+    - `message`: The message that will be sent to all players in a dimension when at least one player is sleeping.
+    - `intervalSeconds`: The interval in seconds that the message will be sent.
+- `createWarpCommands`: Create warp commands, e.g. `/spawn` to alias `/warp spawn`? (true/false)
+- `warpSigns`
+    - `line`: The first line of warp signs
+    - `color`: The [color code](https://wiki.vg/Chat#Colors) to use for the first line of warp signs
+- `warps`: All created warps. I don't recommend you manually modify this.
+
+Don't forget to run `/survivalutils reload` to reload the configuration once you're done changing it.
