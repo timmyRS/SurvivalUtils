@@ -23,6 +23,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -40,23 +41,8 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	private final HashMap<Player, Long> playersLastActivity = new HashMap<>();
 	private final ArrayList<Player> afkPlayers = new ArrayList<>();
 	private final ArrayList<Player> sleepingPlayers = new ArrayList<>();
+	private final HashMap<World, Integer> sleepMessageTasks = new HashMap<>();
 	private final ArrayList<Player> colorSignInformed = new ArrayList<>();
-	private int sleepCoordinationTask = -1;
-
-	private Location stringToLocation(String string)
-	{
-		final String[] arr = string.split(",");
-		if(arr.length != 6)
-		{
-			return null;
-		}
-		return new Location(getServer().getWorld(arr[0]), Double.valueOf(arr[1]), Double.valueOf(arr[2]), Double.valueOf(arr[3]), Float.valueOf(arr[4]), Float.valueOf(arr[5]));
-	}
-
-	private String locationToString(Location location)
-	{
-		return location.getWorld().getName() + "," + location.getX() + "," + location.getY() + "," + location.getZ() + "," + location.getYaw() + "," + location.getPitch();
-	}
 
 	@Override
 	public void onEnable()
@@ -71,7 +57,8 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		getConfig().addDefault("afkKick.message", "You have been kicked for being AFK. Feel free to reconnect now that you're no longer AFK.");
 		getConfig().addDefault("sleepCoordination.enabled", false);
 		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
-		getConfig().addDefault("sleepCoordination.intervalSeconds", 20);
+		getConfig().addDefault("sleepCoordination.intervalTicks", 50);
+		getConfig().addDefault("sleepCoordination.skipPercent", 100D);
 		getConfig().addDefault("createWarpCommands", false);
 		getConfig().addDefault("warpSigns.line", "[Warp]");
 		getConfig().addDefault("warpSigns.color", "5");
@@ -139,6 +126,33 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}, 100, 100);
 	}
 
+	private Location stringToLocation(String string)
+	{
+		final String[] arr = string.split(",");
+		if(arr.length != 6)
+		{
+			return null;
+		}
+		return new Location(getServer().getWorld(arr[0]), Double.valueOf(arr[1]), Double.valueOf(arr[2]), Double.valueOf(arr[3]), Float.valueOf(arr[4]), Float.valueOf(arr[5]));
+	}
+
+	private String locationToString(Location location)
+	{
+		return location.getWorld().getName() + "," + location.getX() + "," + location.getY() + "," + location.getZ() + "," + location.getYaw() + "," + location.getPitch();
+	}
+
+	private boolean isVanished(Player player)
+	{
+		for(MetadataValue meta : player.getMetadata("vanished"))
+		{
+			if(meta.asBoolean())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private boolean canTeleport(Player p)
 	{
 		return p.isOnGround() || p.getGameMode() == GameMode.CREATIVE || p.getGameMode() == GameMode.SPECTATOR;
@@ -178,57 +192,20 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	private void reloadSurvivalUtilsConfig()
 	{
 		reloadConfig();
-		if(sleepCoordinationTask != -1)
+		synchronized(sleepingPlayers)
 		{
-			getServer().getScheduler().cancelTask(sleepCoordinationTask);
-		}
-		if(getConfig().getBoolean("sleepCoordination.enabled"))
-		{
-			sleepCoordinationTask = getServer().getScheduler().scheduleSyncRepeatingTask(this, ()->
+			sleepingPlayers.clear();
+			if(getConfig().getBoolean("sleepCoordination.enabled"))
 			{
-				final HashMap<World, ArrayList<Player>> worlds = new HashMap<>();
-				synchronized(sleepingPlayers)
+				for(Player p : getServer().getOnlinePlayers())
 				{
-					final ArrayList<Player> _sleepingPlayers = new ArrayList<>(sleepingPlayers);
-					for(Player p : _sleepingPlayers)
+					if(p.isSleeping())
 					{
-						if(p.isOnline() && p.isSleeping())
-						{
-							final ArrayList<Player> worldSleepingPlayers;
-							if(worlds.containsKey(p.getWorld()))
-							{
-								worldSleepingPlayers = worlds.get(p.getWorld());
-							}
-							else
-							{
-								worldSleepingPlayers = new ArrayList<>();
-							}
-							worldSleepingPlayers.add(p);
-							worlds.put(p.getWorld(), worldSleepingPlayers);
-
-						}
-						else
-						{
-							sleepingPlayers.remove(p);
-						}
+						sleepingPlayers.add(p);
 					}
 				}
-				for(Map.Entry<World, ArrayList<Player>> entry : worlds.entrySet())
-				{
-					if(entry.getValue().size() > 0 && entry.getValue().size() < entry.getKey().getPlayers().size())
-					{
-						final String message = getConfig().getString("sleepCoordination.message").replace("&", "§").replace("%sleeping%", String.valueOf(entry.getValue().size())).replace("%total%", String.valueOf(entry.getKey().getPlayers().size()));
-						for(Player p : entry.getKey().getPlayers())
-						{
-							p.sendMessage(message);
-						}
-					}
-				}
-			}, getConfig().getLong("sleepCoordination.intervalSeconds") * 20L, getConfig().getLong("sleepCoordination.intervalSeconds") * 20L);
-		}
-		else
-		{
-			sleepCoordinationTask = -1;
+				handleSleep();
+			}
 		}
 		synchronized(playersLastActivity)
 		{
@@ -259,7 +236,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		saveConfig();
 	}
 
-	@EventHandler(priority = EventPriority.LOW)
+	@EventHandler
 	public void onPlayerJoin(PlayerJoinEvent e)
 	{
 		if((getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled")) && !e.getPlayer().hasPermission("survivalutils.allowafk"))
@@ -271,7 +248,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
-	@EventHandler(priority = EventPriority.LOW)
+	@EventHandler
 	public void onPlayerQuit(PlayerQuitEvent e)
 	{
 		if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
@@ -291,7 +268,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
-	@EventHandler(priority = EventPriority.LOW)
+	@EventHandler
 	public void onPlayerMove(PlayerMoveEvent e)
 	{
 		if((getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled")) && !e.getPlayer().hasPermission("survivalutils.allowafk"))
@@ -310,7 +287,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler(priority = EventPriority.HIGH)
 	public void onEntityDamageByEntity(EntityDamageByEntityEvent e)
 	{
-		if(e.getDamager() instanceof Player && getConfig().getBoolean("antiAFKFarming.enabled"))
+		if(!e.isCancelled() && e.getDamager() instanceof Player && getConfig().getBoolean("antiAFKFarming.enabled"))
 		{
 			final Player p = (Player) e.getDamager();
 			synchronized(afkPlayers)
@@ -326,36 +303,39 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler(priority = EventPriority.HIGH)
 	public void onPlayerInteract(PlayerInteractEvent e)
 	{
-		if(getConfig().getBoolean("antiAFKFarming.enabled"))
+		if(!e.isCancelled())
 		{
-			synchronized(afkPlayers)
+			if(getConfig().getBoolean("antiAFKFarming.enabled"))
 			{
-				if(afkPlayers.contains(e.getPlayer()))
+				synchronized(afkPlayers)
 				{
-					e.setCancelled(true);
-					return;
+					if(afkPlayers.contains(e.getPlayer()))
+					{
+						e.setCancelled(true);
+						return;
+					}
 				}
 			}
-		}
-		if(e.getAction() == Action.RIGHT_CLICK_BLOCK && e.getClickedBlock().getState() instanceof Sign)
-		{
-			final Sign s = (Sign) e.getClickedBlock().getState();
-			if(s.getLine(0).equals("§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line")))
+			if(e.getAction() == Action.RIGHT_CLICK_BLOCK && e.getClickedBlock().getState() instanceof Sign)
 			{
-				final String w = s.getLine(1).toLowerCase();
-				if((e.getPlayer().hasPermission("survivalutils.warps") || e.getPlayer().hasPermission("survivalutils.warps." + w)) && getConfig().contains("warps." + w))
+				final Sign s = (Sign) e.getClickedBlock().getState();
+				if(s.getLine(0).equals("§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line")))
 				{
-					e.setCancelled(true);
-					e.getPlayer().teleport(stringToLocation(getConfig().getString("warps." + w)));
+					final String w = s.getLine(1).toLowerCase();
+					if((e.getPlayer().hasPermission("survivalutils.warps") || e.getPlayer().hasPermission("survivalutils.warps." + w)) && getConfig().contains("warps." + w))
+					{
+						e.setCancelled(true);
+						e.getPlayer().teleport(stringToLocation(getConfig().getString("warps." + w)));
+					}
 				}
 			}
 		}
 	}
 
-	@EventHandler(priority = EventPriority.LOW)
+	@EventHandler(priority = EventPriority.HIGH)
 	public void onBlockPlace(BlockPlaceEvent e)
 	{
-		if(e.getPlayer().hasPermission("survivalutils.coloredsigns") && e.getBlockPlaced().getState() instanceof Sign)
+		if(!e.isCancelled() && e.getPlayer().hasPermission("survivalutils.coloredsigns") && e.getBlockPlaced().getState() instanceof Sign)
 		{
 			synchronized(colorSignInformed)
 			{
@@ -371,61 +351,180 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
-	@EventHandler(priority = EventPriority.NORMAL)
+	@EventHandler(priority = EventPriority.HIGH)
 	public void onSignChange(SignChangeEvent e)
 	{
-		if(e.getPlayer().hasPermission("survivalutils.coloredsigns"))
+		if(!e.isCancelled())
 		{
-			for(int i = 0; i < 4; i++)
+			if(e.getPlayer().hasPermission("survivalutils.coloredsigns"))
 			{
-				e.setLine(i, e.getLine(i).replace("&", "§").replace("§§", "&"));
+				for(int i = 0; i < 4; i++)
+				{
+					e.setLine(i, e.getLine(i).replace("&", "§").replace("§§", "&"));
+				}
 			}
-		}
-		if(e.getPlayer().hasPermission("survivalutils.warpsigns") && e.getLine(0).trim().equalsIgnoreCase(getConfig().getString("warpSigns.line")))
-		{
-			e.setLine(0, "§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line"));
-			e.setLine(1, e.getLine(1).trim());
-		}
-	}
-
-	@EventHandler(priority = EventPriority.LOW)
-	public void onPlayerBedEnter(PlayerBedEnterEvent e)
-	{
-		synchronized(sleepingPlayers)
-		{
-			if(!sleepingPlayers.contains(e.getPlayer()))
+			if(e.getPlayer().hasPermission("survivalutils.warpsigns") && e.getLine(0).trim().equalsIgnoreCase(getConfig().getString("warpSigns.line")))
 			{
-				sleepingPlayers.add(e.getPlayer());
+				e.setLine(0, "§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line"));
+				e.setLine(1, e.getLine(1).trim());
 			}
 		}
 	}
 
-	@EventHandler(priority = EventPriority.LOW)
-	public void onPlayerBedLeave(PlayerBedLeaveEvent e)
+	private void handleSleep()
 	{
-		synchronized(sleepingPlayers)
+		if(getConfig().getBoolean("sleepCoordination.enabled"))
 		{
-			sleepingPlayers.remove(e.getPlayer());
+			synchronized(sleepMessageTasks)
+			{
+				for(Integer i : sleepMessageTasks.values())
+				{
+					getServer().getScheduler().cancelTask(i);
+				}
+				sleepMessageTasks.clear();
+			}
+			final HashMap<World, ArrayList<Player>> worlds = new HashMap<>();
+			synchronized(sleepingPlayers)
+			{
+				final ArrayList<Player> _sleepingPlayers = new ArrayList<>(sleepingPlayers);
+				for(Player p : _sleepingPlayers)
+				{
+					if(p.isOnline() && p.isSleeping())
+					{
+						if(!isVanished(p))
+						{
+							final ArrayList<Player> worldSleepingPlayers;
+							if(worlds.containsKey(p.getWorld()))
+							{
+								worldSleepingPlayers = worlds.get(p.getWorld());
+							}
+							else
+							{
+								worldSleepingPlayers = new ArrayList<>();
+							}
+							worldSleepingPlayers.add(p);
+							worlds.put(p.getWorld(), worldSleepingPlayers);
+						}
+					}
+					else
+					{
+						sleepingPlayers.remove(p);
+					}
+				}
+			}
+			for(Map.Entry<World, ArrayList<Player>> entry : worlds.entrySet())
+			{
+				final int worldSleepingPlayers = entry.getValue().size();
+				if(worldSleepingPlayers > 0)
+				{
+					long neededForSleep = 0;
+					boolean takeAction = getConfig().getInt("sleepCoordination.skipPercent") < 100;
+					for(Player p : entry.getKey().getPlayers())
+					{
+						if(isVanished(p))
+						{
+							takeAction = true;
+						}
+						else
+						{
+							neededForSleep++;
+						}
+					}
+					neededForSleep = Math.round((double) neededForSleep * getConfig().getDouble("sleepCoordination.skipPercent") * 0.01D);
+					if(worldSleepingPlayers >= neededForSleep)
+					{
+						if(takeAction)
+						{
+							synchronized(sleepingPlayers)
+							{
+								for(Player p : entry.getKey().getPlayers())
+								{
+									sleepingPlayers.remove(p);
+								}
+							}
+							entry.getKey().setTime(0);
+							entry.getKey().setThundering(false);
+						}
+					}
+					else
+					{
+						final String neededForSleepString = String.valueOf(neededForSleep);
+						synchronized(sleepMessageTasks)
+						{
+							sleepMessageTasks.put(entry.getKey(), getServer().getScheduler().scheduleSyncDelayedTask(this, ()->
+							{
+								synchronized(sleepMessageTasks)
+								{
+									sleepMessageTasks.remove(entry.getKey());
+								}
+								final String message = getConfig().getString("sleepCoordination.message").replace("&", "§").replace("%sleeping%", String.valueOf(entry.getValue().size())).replace("%total%", neededForSleepString);
+								for(Player p : entry.getKey().getPlayers())
+								{
+									p.sendMessage(message);
+								}
+							}, getConfig().getLong("sleepCoordination.intervalTicks")));
+						}
+					}
+				}
+			}
 		}
 	}
 
 	@EventHandler(priority = EventPriority.HIGH)
+	public void onPlayerBedEnter(final PlayerBedEnterEvent e)
+	{
+		if(!e.isCancelled() && getConfig().getBoolean("sleepCoordination.enabled"))
+		{
+			getServer().getScheduler().scheduleSyncDelayedTask(this, ()->
+			{
+				if(e.getPlayer().isSleeping())
+				{
+					synchronized(sleepingPlayers)
+					{
+						if(!sleepingPlayers.contains(e.getPlayer()))
+						{
+							sleepingPlayers.add(e.getPlayer());
+						}
+					}
+					handleSleep();
+				}
+			}, 1);
+		}
+	}
+
+	@EventHandler
+	public void onPlayerBedLeave(PlayerBedLeaveEvent e)
+	{
+		if(getConfig().getBoolean("sleepCoordination.enabled"))
+		{
+			synchronized(sleepingPlayers)
+			{
+				sleepingPlayers.remove(e.getPlayer());
+			}
+			handleSleep();
+		}
+	}
+
+	@EventHandler
 	public void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent e)
 	{
-		final Player p = e.getPlayer();
-		if(p.hasPermission("survivalutils.warp") && getConfig().getBoolean("createWarpCommands"))
+		if(!e.isCancelled())
 		{
-			final String command = e.getMessage().substring(1).split(" ")[0].toLowerCase();
-			if((p.hasPermission("survivalutils.warps") || p.hasPermission("survivalutils.warps." + command)) && getServer().getPluginCommand(command) == null && getConfig().contains("warps." + command))
+			final Player p = e.getPlayer();
+			if(p.hasPermission("survivalutils.warp") && getConfig().getBoolean("createWarpCommands"))
 			{
-				e.setCancelled(true);
-				if(canTeleport(p))
+				final String command = e.getMessage().substring(1).split(" ")[0].toLowerCase();
+				if((p.hasPermission("survivalutils.warps") || p.hasPermission("survivalutils.warps." + command)) && getServer().getPluginCommand(command) == null && getConfig().contains("warps." + command))
 				{
-					p.teleport(stringToLocation(getConfig().getString("warps." + command)));
-				}
-				else
-				{
-					p.sendMessage("§cYou may not teleport right now.");
+					e.setCancelled(true);
+					if(canTeleport(p))
+					{
+						p.teleport(stringToLocation(getConfig().getString("warps." + command)));
+					}
+					else
+					{
+						p.sendMessage("§cYou may not teleport right now.");
+					}
 				}
 			}
 		}
