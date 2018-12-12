@@ -204,7 +204,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 						sleepingPlayers.add(p);
 					}
 				}
-				handleSleep();
+				handleSleep(0);
 			}
 		}
 		synchronized(playersLastActivity)
@@ -371,7 +371,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 	}
 
-	private void handleSleep()
+	private void handleSleep(long subTicks)
 	{
 		if(getConfig().getBoolean("sleepCoordination.enabled"))
 		{
@@ -391,20 +391,21 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				{
 					if(p.isOnline() && p.isSleeping())
 					{
-						if(!isVanished(p))
+						if(isVanished(p))
 						{
-							final ArrayList<Player> worldSleepingPlayers;
-							if(worlds.containsKey(p.getWorld()))
-							{
-								worldSleepingPlayers = worlds.get(p.getWorld());
-							}
-							else
-							{
-								worldSleepingPlayers = new ArrayList<>();
-							}
-							worldSleepingPlayers.add(p);
-							worlds.put(p.getWorld(), worldSleepingPlayers);
+							continue;
 						}
+						final ArrayList<Player> worldSleepingPlayers;
+						if(worlds.containsKey(p.getWorld()))
+						{
+							worldSleepingPlayers = worlds.get(p.getWorld());
+						}
+						else
+						{
+							worldSleepingPlayers = new ArrayList<>();
+						}
+						worldSleepingPlayers.add(p);
+						worlds.put(p.getWorld(), worldSleepingPlayers);
 					}
 					else
 					{
@@ -412,28 +413,33 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					}
 				}
 			}
+			final long intervalTicks;
+			if((getConfig().getLong("sleepCoordination.intervalTicks") - subTicks) < 1)
+			{
+				intervalTicks = 1;
+			}
+			else
+			{
+				intervalTicks = getConfig().getLong("sleepCoordination.intervalTicks") - subTicks;
+			}
 			for(Map.Entry<World, ArrayList<Player>> entry : worlds.entrySet())
 			{
 				final int worldSleepingPlayers = entry.getValue().size();
 				if(worldSleepingPlayers > 0)
 				{
 					long neededForSleep = 0;
-					boolean takeAction = getConfig().getInt("sleepCoordination.skipPercent") < 100;
 					for(Player p : entry.getKey().getPlayers())
 					{
 						if(isVanished(p))
 						{
-							takeAction = true;
+							continue;
 						}
-						else
-						{
-							neededForSleep++;
-						}
+						neededForSleep++;
 					}
 					neededForSleep = Math.round((double) neededForSleep * getConfig().getDouble("sleepCoordination.skipPercent") * 0.01D);
 					if(worldSleepingPlayers >= neededForSleep)
 					{
-						if(takeAction)
+						if(entry.getKey().getPlayers().size() < worldSleepingPlayers)
 						{
 							synchronized(sleepingPlayers)
 							{
@@ -462,7 +468,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 								{
 									p.sendMessage(message);
 								}
-							}, getConfig().getLong("sleepCoordination.intervalTicks")));
+							}, intervalTicks));
 						}
 					}
 				}
@@ -479,16 +485,17 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 			{
 				if(e.getPlayer().isSleeping())
 				{
+					final boolean changed;
 					synchronized(sleepingPlayers)
 					{
-						if(!sleepingPlayers.contains(e.getPlayer()))
-						{
-							sleepingPlayers.add(e.getPlayer());
-						}
+						changed = sleepingPlayers.add(e.getPlayer());
 					}
-					handleSleep();
+					if(changed)
+					{
+						handleSleep(5);
+					}
 				}
-			}, 1);
+			}, 5);
 		}
 	}
 
@@ -497,11 +504,15 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	{
 		if(getConfig().getBoolean("sleepCoordination.enabled"))
 		{
+			final boolean changed;
 			synchronized(sleepingPlayers)
 			{
-				sleepingPlayers.remove(e.getPlayer());
+				changed = sleepingPlayers.remove(e.getPlayer());
 			}
-			handleSleep();
+			if(changed)
+			{
+				handleSleep(0);
+			}
 		}
 	}
 
@@ -543,10 +554,10 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				}
 				else
 				{
-					s.sendMessage("https://github.com/timmyrs/SurvivalUtils");
+					s.sendMessage("https://www.spigotmc.org/resources/survivalutils.62574/");
 				}
 				break;
-			case "trade":
+			/*case "trade":
 				if(s instanceof Player)
 				{
 					if(a.length == 1)
@@ -562,7 +573,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				{
 					s.sendMessage("§cThis command is only for players.");
 				}
-				break;
+				break;*/
 			case "tpa":
 			case "tpahere":
 				if(s instanceof Player)
