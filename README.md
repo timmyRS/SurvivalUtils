@@ -21,11 +21,13 @@ All features are disabled/OP-only by default to allow for maximum configurabilit
 
 ## Permissions
 
-- `survivalutils.tpa` grants all `survivalutils.tpa.*` permissions:
-  - `survivalutils.tpa.tpa` allows the player to use `/tpa`.
-  - `survivalutils.tpa.tpahere` allows the player to use `/tpahere`.
-  - `survivalutils.tpa.tpaccept` allows the player to use `/tpaccept`.
-  - `survivalutils.tpa.tpcancel` allows the player to use `/tpcancel`.
+- `survivalutils.tpa.*` grants these permissions:
+  - `survivalutils.tpa` grants these permissions:
+    - `survivalutils.tpa.tpa` allows the player to use `/tpa`.
+    - `survivalutils.tpa.tpahere` allows the player to use `/tpahere`.
+    - `survivalutils.tpa.accept` allows the player to use `/tpaccept`.
+  - `survivalutils.tpa.cancel` allows the player to use `/tpcancel`.
+  - `survivalutils.tpa.toggle` allows the player to use `/tptoggle`.
 - `survivalutils.home` allows the player to use `/home`, `/sethome`, `/delhome`, and `/homes`.
 - `survivalutils.homelimit.x` allows the player to use home limit 'x' as defined in the config.yml.
 - `survivalutils.allowafk` allows the player to bypass all AFK detections.
@@ -44,7 +46,7 @@ If you don't have a permission manager, you can use the permissions.yml as follo
     default:
       default: true
       children:
-        survivalutils.tpa: true
+        survivalutils.tpa.*: true
         survivalutils.home: true
         survivalutils.warp: true
         survivalutils.warps: true

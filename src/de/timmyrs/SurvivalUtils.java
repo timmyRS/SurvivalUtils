@@ -36,7 +36,6 @@ import java.util.Map;
 public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecutor
 {
 	private File playerDataDir;
-	//static final ArrayList<TradeRequest> tradeRequests = new ArrayList<>();
 	static final ArrayList<TeleportationRequest> teleportationRequests = new ArrayList<>();
 	private final HashMap<Player, Long> playersLastActivity = new HashMap<>();
 	private final ArrayList<Player> afkPlayers = new ArrayList<>();
@@ -51,9 +50,9 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		getConfig().addDefault("homeLimits.default", 10);
 		getConfig().addDefault("homeLimits.op", 100);
 		getConfig().addDefault("antiAFKFarming.enabled", false);
-		getConfig().addDefault("antiAFKFarming.seconds", 30);
+		getConfig().addDefault("antiAFKFarming.seconds", 15);
 		getConfig().addDefault("afkKick.enabled", false);
-		getConfig().addDefault("afkKick.seconds", 900);
+		getConfig().addDefault("afkKick.seconds", 300);
 		getConfig().addDefault("afkKick.message", "You have been kicked for being AFK. Feel free to reconnect now that you're no longer AFK.");
 		getConfig().addDefault("sleepCoordination.enabled", false);
 		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
@@ -67,11 +66,11 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		saveConfig();
 		reloadSurvivalUtilsConfig();
 		getCommand("survivalutils").setExecutor(this);
-		//getCommand("trade").setExecutor(this);
 		getCommand("tpa").setExecutor(this);
 		getCommand("tpahere").setExecutor(this);
 		getCommand("tpaccept").setExecutor(this);
 		getCommand("tpcancel").setExecutor(this);
+		getCommand("tptoggle").setExecutor(this);
 		getCommand("home").setExecutor(this);
 		getCommand("homes").setExecutor(this);
 		getCommand("sethome").setExecutor(this);
@@ -155,6 +154,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 
 	private boolean canTeleport(Player p)
 	{
+		//noinspection deprecation
 		return p.isOnGround() || p.getGameMode() == GameMode.CREATIVE || p.getGameMode() == GameMode.SPECTATOR;
 	}
 
@@ -163,11 +163,11 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		return System.currentTimeMillis() / 1000L;
 	}
 
-	private File getConfigFile(Player p)
+	private File getConfigFile(Player p) throws IOException
 	{
 		if(!playerDataDir.exists() && !playerDataDir.mkdir())
 		{
-			throw new RuntimeException("Failed to create " + playerDataDir.getPath());
+			throw new IOException("Failed to create " + playerDataDir.getPath());
 		}
 		return new File(playerDataDir, p.getUniqueId().toString().replace("-", "") + ".yml");
 	}
@@ -557,23 +557,6 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					s.sendMessage("https://www.spigotmc.org/resources/survivalutils.62574/");
 				}
 				break;
-			/*case "trade":
-				if(s instanceof Player)
-				{
-					if(a.length == 1)
-					{
-						// TODO
-					}
-					else
-					{
-						s.sendMessage("§cSyntax: /trade <player>");
-					}
-				}
-				else
-				{
-					s.sendMessage("§cThis command is only for players.");
-				}
-				break;*/
 			case "tpa":
 			case "tpahere":
 				if(s instanceof Player)
@@ -583,53 +566,74 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 						final Player t = getServer().getPlayer(a[0]);
 						if(t != null && t.isOnline())
 						{
-							if(t.hasPermission("survivalutils.tpa"))
+							if(t.hasPermission("survivalutils.tpa.accept"))
 							{
 								final Player p = (Player) s;
 								if(!t.equals(p))
 								{
-									TeleportationRequest tr = TeleportationRequest.getFrom(p);
-									if(tr != null && !tr.to.equals(t))
+									try
 									{
-										synchronized(teleportationRequests)
+										final File playerConfigFile = getConfigFile(t);
+										final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(playerConfigFile);
+										if(playerConfig.contains("tpa"))
 										{
-											teleportationRequests.remove(tr);
-										}
-										s.sendMessage("§eYour teleportation request to " + tr.to.getName() + " has been cancelled.");
-										tr = null;
-									}
-									if(tr == null)
-									{
-										final boolean here = c.getName().equals("tpahere");
-										synchronized(teleportationRequests)
-										{
-											teleportationRequests.add(new TeleportationRequest(p, t, here));
-										}
-										if(here)
-										{
-											t.sendMessage("§e" + p.getName() + " has requested you to teleport to them.");
+											p.sendMessage("§c" + t.getName() + " doesn't want to receive teleportation requests.");
 										}
 										else
 										{
-											t.sendMessage("§e" + p.getName() + " has requested to teleport to you.");
+											TeleportationRequest tr = TeleportationRequest.getFrom(p);
+											if(tr != null && !tr.to.equals(t))
+											{
+												synchronized(teleportationRequests)
+												{
+													teleportationRequests.remove(tr);
+												}
+												s.sendMessage("§eYour teleportation request to " + tr.to.getName() + " has been cancelled.");
+												tr = null;
+											}
+											if(tr == null)
+											{
+												final boolean here = c.getName().equals("tpahere");
+												synchronized(teleportationRequests)
+												{
+													teleportationRequests.add(new TeleportationRequest(p, t, here));
+												}
+												if(here)
+												{
+													t.sendMessage("§e" + p.getName() + " has requested you to teleport to them.");
+												}
+												else
+												{
+													t.sendMessage("§e" + p.getName() + " has requested to teleport to you.");
+												}
+												t.sendMessage("You can accept it using /tpaccept " + p.getName());
+												p.sendMessage("§aYou've sent a teleportation request to " + t.getName() + ".");
+												if(p.hasPermission("survivalutils.tpa.cancel"))
+												{
+													p.sendMessage("You can cancel it using /tpcancel.");
+												}
+											}
+											else
+											{
+												p.sendMessage("§cI already got it the first time.");
+											}
 										}
-										t.sendMessage("You can accept it using /tpaccept " + p.getName());
-										p.sendMessage("§aYou've sent a teleportation request to " + t.getName() + ".");
-										p.sendMessage("You can cancel it using /tpcancel.");
 									}
-									else
+									catch(IOException e)
 									{
-										p.sendMessage("§cI already got it the first time.");
+										e.printStackTrace();
+										s.sendMessage("§cAn I/O error has occured. Please contact an administrator.");
 									}
 								}
 								else
 								{
 									s.sendMessage("Yes?");
 								}
+
 							}
 							else
 							{
-								s.sendMessage("§c" + t.getName() + " is missing the survivalutils.tpa permission, so they can't /tpaccept.");
+								s.sendMessage("§c" + t.getName() + " is missing the survivalutils.tpa.accept permission, so they can't /tpaccept.");
 							}
 						}
 						else
@@ -707,6 +711,44 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					else
 					{
 						s.sendMessage("§eYou haven't sent a teleportation request recently.");
+					}
+				}
+				else
+				{
+					s.sendMessage("§cThis command is only for players.");
+				}
+				break;
+			case "tptoggle":
+				if(s instanceof Player)
+				{
+					if(s.hasPermission("survivalutils.tpa.accept"))
+					{
+						try
+						{
+							final File playerConfigFile = getConfigFile((Player) s);
+							final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(playerConfigFile);
+							if(playerConfig.contains("tpa"))
+							{
+								playerConfig.set("tpa", null);
+								s.sendMessage("§aPlayers are now able to send you teleportation requests.");
+							}
+							else
+							{
+								playerConfig.set("tpa", 1);
+								s.sendMessage("§aPlayers are now unable to send you teleportation requests.");
+
+							}
+							playerConfig.save(playerConfigFile);
+						}
+						catch(IOException e)
+						{
+							e.printStackTrace();
+							s.sendMessage("§cAn I/O error has occured. Please contact an administrator.");
+						}
+					}
+					else
+					{
+						s.sendMessage("§cYou're missing the survivalutils.tpa.accept permission, so you can't get teleportation requests.");
 					}
 				}
 				else
@@ -843,26 +885,34 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 						final Player p = (Player) s;
 						if(canTeleport(p))
 						{
-							final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(getConfigFile(p));
-							if(playerConfig.contains("homes"))
+							try
 							{
-								final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
-								if(homes.containsKey(homename))
+								final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(getConfigFile(p));
+								if(playerConfig.contains("homes"))
 								{
-									p.teleport(stringToLocation((String) homes.get(homename)));
-								}
-								else if(homes.size() == 1)
-								{
-									p.teleport(stringToLocation((String) homes.values().iterator().next()));
+									final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
+									if(homes.containsKey(homename))
+									{
+										p.teleport(stringToLocation((String) homes.get(homename)));
+									}
+									else if(homes.size() == 1)
+									{
+										p.teleport(stringToLocation((String) homes.values().iterator().next()));
+									}
+									else
+									{
+										p.sendMessage("§cYou don't have a home named '" + homename + "'.");
+									}
 								}
 								else
 								{
-									p.sendMessage("§cYou don't have a home named '" + homename + "'.");
+									p.sendMessage("You're homeless. :^)");
 								}
 							}
-							else
+							catch(IOException e)
 							{
-								p.sendMessage("You're homeless. :^)");
+								e.printStackTrace();
+								p.sendMessage("§cAn I/O error has occured. Please contact an administrator.");
 							}
 						}
 						else
@@ -880,27 +930,35 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 				if(s instanceof Player)
 				{
 					final Player p = (Player) s;
-					final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(getConfigFile(p));
-					if(playerConfig.contains("homes"))
+					try
 					{
-						final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
-						if(homes.size() > 0)
+						final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(getConfigFile(p));
+						if(playerConfig.contains("homes"))
 						{
-							final StringBuilder message = new StringBuilder("You have ").append(homes.size()).append("/").append(getHomeLimit(p)).append(" homes:");
-							for(String name : homes.keySet())
+							final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
+							if(homes.size() > 0)
 							{
-								message.append(" ").append(name);
+								final StringBuilder message = new StringBuilder("You have ").append(homes.size()).append("/").append(getHomeLimit(p)).append(" homes:");
+								for(String name : homes.keySet())
+								{
+									message.append(" ").append(name);
+								}
+								p.sendMessage(message.toString());
 							}
-							s.sendMessage(message.toString());
+							else
+							{
+								p.sendMessage("You're homeless. :^)");
+							}
 						}
 						else
 						{
 							p.sendMessage("You're homeless. :^)");
 						}
 					}
-					else
+					catch(IOException e)
 					{
-						p.sendMessage("You're homeless. :^)");
+						e.printStackTrace();
+						p.sendMessage("§cAn I/O error has occured. Please contact an administrator.");
 					}
 				}
 				else
@@ -927,28 +985,36 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 							homename = "home";
 						}
 						final Player p = (Player) s;
-						final File playerConfigFile = getConfigFile(p);
-						final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(playerConfigFile);
-						if(getHomeLimit(p) == 0 || (playerConfig.contains("homes") && playerConfig.getConfigurationSection("homes").getValues(false).size() >= getHomeLimit(p)))
+						try
 						{
-							p.sendMessage("§cYou can't create more than " + getHomeLimit(p) + " homes.");
-						}
-						else if(playerConfig.contains("homes." + homename))
-						{
-							p.sendMessage("§cYou already have a home named '" + homename + "'. Run /delhome " + homename + " first.");
-						}
-						else
-						{
-							playerConfig.set("homes." + homename, locationToString(p.getLocation()));
-							try
+							final File playerConfigFile = getConfigFile(p);
+							final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(playerConfigFile);
+							if(getHomeLimit(p) == 0 || (playerConfig.contains("homes") && playerConfig.getConfigurationSection("homes").getValues(false).size() >= getHomeLimit(p)))
 							{
-								playerConfig.save(playerConfigFile);
+								p.sendMessage("§cYou can't create more than " + getHomeLimit(p) + " homes.");
 							}
-							catch(IOException e)
+							else if(playerConfig.contains("homes." + homename))
 							{
-								throw new RuntimeException(e.getMessage());
+								p.sendMessage("§cYou already have a home named '" + homename + "'. Run /delhome " + homename + " first.");
 							}
-							s.sendMessage("§aSuccessfully created home '" + homename + "'.");
+							else
+							{
+								playerConfig.set("homes." + homename, locationToString(p.getLocation()));
+								try
+								{
+									playerConfig.save(playerConfigFile);
+								}
+								catch(IOException e)
+								{
+									throw new RuntimeException(e.getMessage());
+								}
+								p.sendMessage("§aSuccessfully created home '" + homename + "'.");
+							}
+						}
+						catch(IOException e)
+						{
+							e.printStackTrace();
+							p.sendMessage("§cAn I/O error has occured. Please contact an administrator.");
 						}
 					}
 				}
@@ -963,26 +1029,34 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					if(a.length == 1)
 					{
 						final Player p = (Player) s;
-						final File playerConfigFile = getConfigFile(p);
-						final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(playerConfigFile);
-						if(playerConfig.contains("homes." + a[0].toLowerCase()))
+						try
 						{
-							final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
-							homes.remove(a[0].toLowerCase());
-							playerConfig.set("homes", homes);
-							try
+							final File playerConfigFile = getConfigFile(p);
+							final YamlConfiguration playerConfig = YamlConfiguration.loadConfiguration(playerConfigFile);
+							if(playerConfig.contains("homes." + a[0].toLowerCase()))
 							{
-								playerConfig.save(playerConfigFile);
+								final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
+								homes.remove(a[0].toLowerCase());
+								playerConfig.set("homes", homes);
+								try
+								{
+									playerConfig.save(playerConfigFile);
+								}
+								catch(IOException e)
+								{
+									throw new RuntimeException(e.getMessage());
+								}
+								p.sendMessage("§aSuccessfully deleted home '" + a[0].toLowerCase() + "'.");
 							}
-							catch(IOException e)
+							else
 							{
-								throw new RuntimeException(e.getMessage());
+								p.sendMessage("§cYou don't have a home named '" + a[0].toLowerCase() + "'.");
 							}
-							s.sendMessage("§aSuccessfully deleted home '" + a[0].toLowerCase() + "'.");
 						}
-						else
+						catch(IOException e)
 						{
-							p.sendMessage("§cYou don't have a home named '" + a[0].toLowerCase() + "'.");
+							e.printStackTrace();
+							p.sendMessage("§cAn I/O error has occured. Please contact an administrator.");
 						}
 					}
 					else
@@ -999,20 +1073,6 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		return true;
 	}
 }
-
-/*
-class TradeRequest
-{
-	final Player from;
-	final Player to;
-
-	TradeRequest(Player from, Player to)
-	{
-		this.from = from;
-		this.to = to;
-	}
-}
-*/
 
 class TeleportationRequest
 {

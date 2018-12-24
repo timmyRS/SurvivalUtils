@@ -1,24 +1,25 @@
 ---
 name: SurvivalUtils
-version: 1.4.2
+version: 1.5
 main: de.timmyrs.SurvivalUtils
 author: timmyRS
-website: https://timmyrs.de
+website: https://www.spigotmc.org/resources/survivalutils.62574/
 
 commands:
   survivalutils: {}
-  # trade:
-  #   permission: survivalutils.trade
   tpa:
     permission: survivalutils.tpa.tpa
   tpahere:
     permission: survivalutils.tpa.tpahere
   tpaccept:
     aliases: [tpaaccept]
-    permission: survivalutils.tpa.tpaccept
+    permission: survivalutils.tpa.accept
   tpcancel:
     aliases: [tpacancel]
-    permission: survivalutils.tpa.tpcancel
+    permission: survivalutils.tpa.cancel
+  tptoggle:
+    aliases: [tpatoggle]
+    permission: survivalutils.tpa.toggle
   warp:
     permission: survivalutils.warp
   warps:
@@ -39,10 +40,11 @@ commands:
 permissions:
   survivalutils.tpa:
     children:
-      survivalutils.tpa.*: true
-  survivalutils.tpa.*:
-    children:
       survivalutils.tpa.tpa: true
       survivalutils.tpa.tpahere: true
-      survivalutils.tpa.tpaccept: true
-      survivalutils.tpa.tpcancel: true
+      survivalutils.tpa.accept: true
+  survivalutils.tpa.*:
+    children:
+      survivalutils.tpa: true
+      survivalutils.tpa.cancel: true
+      survivalutils.tpa.toggle: true
