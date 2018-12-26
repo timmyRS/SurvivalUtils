@@ -6,16 +6,18 @@ Essential features to improve the experience on your survival server:
   - Warp Signs
   - Per-Warp Permissions
 - Homes
-  - Infinite Configurable Limits
+  - Fully customizable home limits
+- Start Items
 - Teleportation Requests (tpa)
-  - TP Here Requests (tpahere)
-  - Cancellable
+  - TP-Here Requests (tpahere)
+  - Requester can cancel
+  - Players can toggle receiving requests
 - Colored Signs
-- AFK Detections
-  - Anti-AFK Farming
-  - Enhanced AFK Kick
+- Anti-AFK Farming
+- Clever AFK Kick
+- Enhanced AFK Kick
 - Sleep Coordination
-  - Skip At Percentage
+  - Skip Night if x% players are sleeping
 
 All features are disabled/OP-only by default to allow for maximum configurability.
 
@@ -30,7 +32,7 @@ All features are disabled/OP-only by default to allow for maximum configurabilit
   - `survivalutils.tpa.toggle` allows the player to use `/tptoggle`.
 - `survivalutils.home` allows the player to use `/home`, `/sethome`, `/delhome`, and `/homes`.
 - `survivalutils.homelimit.x` allows the player to use home limit 'x' as defined in the config.yml.
-- `survivalutils.allowafk` allows the player to bypass all AFK detections.
+- `survivalutils.allowafk` allows the player to bypass all anti-AFK measures.
 - `survivalutils.warp` allows the player to use `/warp`, `/warps`, and warp commands, if enabled.
 - `survivalutils.warps` allows the player to warp everywhere.
 - `survivalutils.warps.x` allows the player to warp to warp 'x'.
@@ -64,13 +66,19 @@ Similarly, you can use the permissions.yml to remove permissions from OPs:
   - `default`: The default home limit
   - `op`: The home limit for OPs
   - Other keys can be used to define custom permissions. For example, if you place `vip: 20` in here, players with the `survivalutils.homelimit.vip` permissions can create up to 20 homes.
-- `antiAFKFarming`
+- `startItems`
+  - `enabled`: Enable start items? (true/false)
+  - `items`: The items players get the first time they join. Note that the slot is zero-indexed and the type is a 1.8 Material name.
+- `antiAfkFarming`
   - `enabled`: Prevent AFK farming? (true/false)
   - `seconds`: After `seconds` seconds of not moving, a player will be prevented from attacking and interacting.
+- `cleverAfkKick`
+  - `enabled`: Enable clever AFK kicking? (true/false)
+  - `softSeconds`: If a player has not moved for `seconds` seconds and is becoming a third wheel, they will be kicked.
 - `afkKick`
   - `enabled`: Enable AFK kicking? (true/false)
   - `seconds`: After `seconds` seconds of not moving, a player will be kicked.
-  - `message`: The kick reason message.
+- `afkKickMessage`: The reason given to players when they are kicked due to anti-AFK measures.
 - `sleepCoordination`
   - `enabled`: Enable Sleep Coordination? (true/false)
   - `message`: The message that will be sent to all players in a dimension when at least one player is sleeping.

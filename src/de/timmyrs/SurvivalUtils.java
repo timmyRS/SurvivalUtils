@@ -2,6 +2,7 @@ package de.timmyrs;
 
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Sign;
 import org.bukkit.command.Command;
@@ -23,6 +24,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -36,9 +38,11 @@ import java.util.Map;
 public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecutor
 {
 	private File playerDataDir;
+	private static final HashMap<Integer, ItemStack> startItems = new HashMap<>();
 	static final ArrayList<TeleportationRequest> teleportationRequests = new ArrayList<>();
 	private final HashMap<Player, Long> playersLastActivity = new HashMap<>();
-	private final ArrayList<Player> afkPlayers = new ArrayList<>();
+	private final ArrayList<Player> antiAfkFarmingPlayers = new ArrayList<>();
+	private final ArrayList<Player> cleverAntiAfkPlayers = new ArrayList<>();
 	private final ArrayList<Player> sleepingPlayers = new ArrayList<>();
 	private final HashMap<World, Integer> sleepMessageTasks = new HashMap<>();
 	private final ArrayList<Player> colorSignInformed = new ArrayList<>();
@@ -49,11 +53,28 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		playerDataDir = new File(getDataFolder(), "playerdata");
 		getConfig().addDefault("homeLimits.default", 10);
 		getConfig().addDefault("homeLimits.op", 100);
-		getConfig().addDefault("antiAFKFarming.enabled", false);
-		getConfig().addDefault("antiAFKFarming.seconds", 15);
+		getConfig().addDefault("startItems.enabled", false);
+		final ArrayList<HashMap<String, Object>> defaultStartItems = new ArrayList<>();
+		final HashMap<String, Object> apples = new HashMap<>();
+		apples.put("slot", 1);
+		apples.put("type", "APPLE");
+		apples.put("amount", 8);
+		apples.put("durability", 0);
+		defaultStartItems.add(apples);
+		final HashMap<String, Object> bed = new HashMap<>();
+		bed.put("slot", 2);
+		bed.put("type", "BED");
+		bed.put("amount", 1);
+		bed.put("durability", 0);
+		defaultStartItems.add(bed);
+		getConfig().addDefault("startItems.items", defaultStartItems);
+		getConfig().addDefault("antiAfkFarming.enabled", false);
+		getConfig().addDefault("antiAfkFarming.seconds", 60);
+		getConfig().addDefault("cleverAfkKick.enabled", false);
+		getConfig().addDefault("cleverAfkKick.seconds", 300);
 		getConfig().addDefault("afkKick.enabled", false);
-		getConfig().addDefault("afkKick.seconds", 300);
-		getConfig().addDefault("afkKick.message", "You have been kicked for being AFK. Feel free to reconnect now that you're no longer AFK.");
+		getConfig().addDefault("afkKick.seconds", 1200);
+		getConfig().addDefault("afkKickMessage", "You have been kicked for being AFK. Feel free to reconnect now that you're no longer AFK.");
 		getConfig().addDefault("sleepCoordination.enabled", false);
 		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
 		getConfig().addDefault("sleepCoordination.intervalTicks", 50);
@@ -95,34 +116,53 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					}
 				}
 			}
-			if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
+			if(getConfig().getBoolean("antiAfkFarming.enabled") || getConfig().getBoolean("cleverAfkKick.enabled") || getConfig().getBoolean("afkKick.enabled"))
 			{
 				final Map<Player, Long> _playersLastActivity;
 				synchronized(playersLastActivity)
 				{
 					_playersLastActivity = new HashMap<>(playersLastActivity);
 				}
-				synchronized(afkPlayers)
+				final long kickTime = getTime() - getConfig().getInt("afkKick.seconds");
+				final long cleverTime = getTime() - getConfig().getInt("cleverAfkKick.seconds");
+				final long afkTime = getTime() - getConfig().getInt("antiAfkFarming.seconds");
+				for(Map.Entry<Player, Long> entry : _playersLastActivity.entrySet())
 				{
-					final long kickTime = getTime() - getConfig().getInt("afkKick.seconds");
-					final long afkTime = getTime() - getConfig().getInt("antiAFKFarming.seconds");
-					for(Map.Entry<Player, Long> entry : _playersLastActivity.entrySet())
+					if(getConfig().getBoolean("afkKick.enabled") && entry.getValue() < kickTime)
 					{
-						if(getConfig().getBoolean("afkKick.enabled") && entry.getValue() < kickTime)
+						entry.getKey().kickPlayer(applyColor(getConfig().getString("afkKickMessage")));
+					}
+					else
+					{
+						if(getConfig().getBoolean("cleverAfkKick.enabled") && entry.getValue() < cleverTime)
 						{
-							entry.getKey().kickPlayer(getConfig().getString("afkKick.message").replace("&", "§"));
-						}
-						else if(getConfig().getBoolean("antiAFKFarming.enabled") && entry.getValue() < afkTime)
-						{
-							if(!afkPlayers.contains(entry.getKey()))
+							synchronized(cleverAntiAfkPlayers)
 							{
-								afkPlayers.add(entry.getKey());
+								if(!cleverAntiAfkPlayers.contains(entry.getKey()))
+								{
+									cleverAntiAfkPlayers.add(entry.getKey());
+								}
+							}
+						}
+						if(getConfig().getBoolean("antiAfkFarming.enabled") && entry.getValue() < afkTime)
+						{
+							synchronized(antiAfkFarmingPlayers)
+							{
+								if(!antiAfkFarmingPlayers.contains(entry.getKey()))
+								{
+									antiAfkFarmingPlayers.add(entry.getKey());
+								}
 							}
 						}
 					}
 				}
 			}
 		}, 100, 100);
+	}
+
+	private String applyColor(String string)
+	{
+		return string.replace("&", "§").replace("§§", "&");
 	}
 
 	private Location stringToLocation(String string)
@@ -192,6 +232,27 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	private void reloadSurvivalUtilsConfig()
 	{
 		reloadConfig();
+		synchronized(SurvivalUtils.startItems)
+		{
+			SurvivalUtils.startItems.clear();
+			if(getConfig().getBoolean("startItems.enabled"))
+			{
+				//noinspection unchecked
+				final ArrayList<HashMap<String, Object>> startItems = (ArrayList<HashMap<String, Object>>) getConfig().getList("startItems.items");
+				if(startItems != null)
+				{
+					for(HashMap<String, Object> i : startItems)
+					{
+						final ItemStack item = new ItemStack(Material.valueOf(((String) i.get("type")).toUpperCase()), (Integer) i.get("amount"));
+						if(i.containsKey("durability"))
+						{
+							item.setDurability(((Integer) i.get("durability")).shortValue());
+						}
+						SurvivalUtils.startItems.put((Integer) i.get("slot"), item);
+					}
+				}
+			}
+		}
 		synchronized(sleepingPlayers)
 		{
 			sleepingPlayers.clear();
@@ -209,27 +270,32 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		}
 		synchronized(playersLastActivity)
 		{
-			synchronized(afkPlayers)
+			synchronized(antiAfkFarmingPlayers)
 			{
-				if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
+				synchronized(cleverAntiAfkPlayers)
 				{
-					if(playersLastActivity.size() == 0)
+					if(getConfig().getBoolean("antiAfkFarming.enabled") || getConfig().getBoolean("cleverAfkKick.enabled") || getConfig().getBoolean("afkKick.enabled"))
 					{
-						final long time = getTime();
-						for(Player p : getServer().getOnlinePlayers())
+						if(playersLastActivity.size() == 0)
 						{
-							if(!p.hasPermission("survivalutils.allowafk"))
+							final long time = getTime();
+							for(Player p : getServer().getOnlinePlayers())
 							{
-								playersLastActivity.put(p, time);
+								if(!p.hasPermission("survivalutils.allowafk"))
+								{
+									playersLastActivity.put(p, time);
+								}
 							}
+							antiAfkFarmingPlayers.clear();
+							cleverAntiAfkPlayers.clear();
 						}
-						afkPlayers.clear();
 					}
-				}
-				else
-				{
-					playersLastActivity.clear();
-					afkPlayers.clear();
+					else
+					{
+						playersLastActivity.clear();
+						antiAfkFarmingPlayers.clear();
+						cleverAntiAfkPlayers.clear();
+					}
 				}
 			}
 		}
@@ -239,11 +305,21 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerJoin(PlayerJoinEvent e)
 	{
-		if((getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled")) && !e.getPlayer().hasPermission("survivalutils.allowafk"))
+		if(!e.getPlayer().hasPermission("survivalutils.allowafk") && (getConfig().getBoolean("antiAfkFarming.enabled") || getConfig().getBoolean("cleverAfkKick.enabled") || getConfig().getBoolean("afkKick.enabled")))
 		{
 			synchronized(playersLastActivity)
 			{
 				playersLastActivity.put(e.getPlayer(), getTime());
+			}
+		}
+		if(!e.getPlayer().hasPlayedBefore())
+		{
+			synchronized(startItems)
+			{
+				for(Map.Entry<Integer, ItemStack> i : startItems.entrySet())
+				{
+					e.getPlayer().getInventory().setItem(i.getKey(), i.getValue().clone());
+				}
 			}
 		}
 	}
@@ -251,15 +327,19 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerQuit(PlayerQuitEvent e)
 	{
-		if(getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled"))
+		if(getConfig().getBoolean("antiAfkFarming.enabled") || getConfig().getBoolean("cleverAfkKick.enabled") || getConfig().getBoolean("afkKick.enabled"))
 		{
 			synchronized(playersLastActivity)
 			{
 				playersLastActivity.remove(e.getPlayer());
 			}
-			synchronized(afkPlayers)
+			synchronized(antiAfkFarmingPlayers)
 			{
-				afkPlayers.remove(e.getPlayer());
+				antiAfkFarmingPlayers.remove(e.getPlayer());
+			}
+			synchronized(cleverAntiAfkPlayers)
+			{
+				cleverAntiAfkPlayers.remove(e.getPlayer());
 			}
 			synchronized(colorSignInformed)
 			{
@@ -271,15 +351,19 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler
 	public void onPlayerMove(PlayerMoveEvent e)
 	{
-		if((getConfig().getBoolean("antiAFKFarming.enabled") || getConfig().getBoolean("afkKick.enabled")) && !e.getPlayer().hasPermission("survivalutils.allowafk"))
+		if(!e.getPlayer().hasPermission("survivalutils.allowafk") && (getConfig().getBoolean("antiAfkFarming.enabled") || getConfig().getBoolean("cleverAfkKick.enabled") || getConfig().getBoolean("afkKick.enabled")))
 		{
 			synchronized(playersLastActivity)
 			{
 				playersLastActivity.put(e.getPlayer(), getTime());
 			}
-			synchronized(afkPlayers)
+			synchronized(antiAfkFarmingPlayers)
 			{
-				afkPlayers.remove(e.getPlayer());
+				antiAfkFarmingPlayers.remove(e.getPlayer());
+			}
+			synchronized(cleverAntiAfkPlayers)
+			{
+				cleverAntiAfkPlayers.remove(e.getPlayer());
 			}
 		}
 	}
@@ -287,12 +371,29 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler(priority = EventPriority.HIGH)
 	public void onEntityDamageByEntity(EntityDamageByEntityEvent e)
 	{
-		if(!e.isCancelled() && e.getDamager() instanceof Player && getConfig().getBoolean("antiAFKFarming.enabled"))
+		if(e.isCancelled())
+		{
+			return;
+		}
+		if(e.getEntity() instanceof Player && getConfig().getBoolean("cleverAfkKick.enabled"))
+		{
+			final Player p = (Player) e.getEntity();
+			synchronized(cleverAntiAfkPlayers)
+			{
+				if(cleverAntiAfkPlayers.contains(p))
+				{
+					e.setCancelled(true);
+					p.kickPlayer(applyColor(getConfig().getString("afkKickMessage")));
+					return;
+				}
+			}
+		}
+		if(e.getDamager() instanceof Player && getConfig().getBoolean("antiAfkFarming.enabled"))
 		{
 			final Player p = (Player) e.getDamager();
-			synchronized(afkPlayers)
+			synchronized(antiAfkFarmingPlayers)
 			{
-				if(afkPlayers.contains(p))
+				if(antiAfkFarmingPlayers.contains(p))
 				{
 					e.setCancelled(true);
 				}
@@ -303,30 +404,31 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler(priority = EventPriority.HIGH)
 	public void onPlayerInteract(PlayerInteractEvent e)
 	{
-		if(!e.isCancelled())
+		if(e.isCancelled())
 		{
-			if(getConfig().getBoolean("antiAFKFarming.enabled"))
+			return;
+		}
+		if(getConfig().getBoolean("antiAfkFarming.enabled"))
+		{
+			synchronized(antiAfkFarmingPlayers)
 			{
-				synchronized(afkPlayers)
+				if(antiAfkFarmingPlayers.contains(e.getPlayer()))
 				{
-					if(afkPlayers.contains(e.getPlayer()))
-					{
-						e.setCancelled(true);
-						return;
-					}
+					e.setCancelled(true);
+					return;
 				}
 			}
-			if(e.getAction() == Action.RIGHT_CLICK_BLOCK && e.getClickedBlock().getState() instanceof Sign)
+		}
+		if(e.getAction() == Action.RIGHT_CLICK_BLOCK && e.getClickedBlock().getState() instanceof Sign)
+		{
+			final Sign s = (Sign) e.getClickedBlock().getState();
+			if(s.getLine(0).equals("§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line")))
 			{
-				final Sign s = (Sign) e.getClickedBlock().getState();
-				if(s.getLine(0).equals("§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line")))
+				final String w = s.getLine(1).toLowerCase();
+				if((e.getPlayer().hasPermission("survivalutils.warps") || e.getPlayer().hasPermission("survivalutils.warps." + w)) && getConfig().contains("warps." + w))
 				{
-					final String w = s.getLine(1).toLowerCase();
-					if((e.getPlayer().hasPermission("survivalutils.warps") || e.getPlayer().hasPermission("survivalutils.warps." + w)) && getConfig().contains("warps." + w))
-					{
-						e.setCancelled(true);
-						e.getPlayer().teleport(stringToLocation(getConfig().getString("warps." + w)));
-					}
+					e.setCancelled(true);
+					e.getPlayer().teleport(stringToLocation(getConfig().getString("warps." + w)));
 				}
 			}
 		}
@@ -354,20 +456,21 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	@EventHandler(priority = EventPriority.HIGH)
 	public void onSignChange(SignChangeEvent e)
 	{
-		if(!e.isCancelled())
+		if(e.isCancelled())
 		{
-			if(e.getPlayer().hasPermission("survivalutils.coloredsigns"))
+			return;
+		}
+		if(e.getPlayer().hasPermission("survivalutils.coloredsigns"))
+		{
+			for(int i = 0; i < 4; i++)
 			{
-				for(int i = 0; i < 4; i++)
-				{
-					e.setLine(i, e.getLine(i).replace("&", "§").replace("§§", "&"));
-				}
+				e.setLine(i, applyColor(e.getLine(i)));
 			}
-			if(e.getPlayer().hasPermission("survivalutils.warpsigns") && e.getLine(0).trim().equalsIgnoreCase(getConfig().getString("warpSigns.line")))
-			{
-				e.setLine(0, "§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line"));
-				e.setLine(1, e.getLine(1).trim());
-			}
+		}
+		if(e.getPlayer().hasPermission("survivalutils.warpsigns") && e.getLine(0).trim().equalsIgnoreCase(getConfig().getString("warpSigns.line")))
+		{
+			e.setLine(0, "§" + getConfig().getString("warpSigns.color") + getConfig().getString("warpSigns.line"));
+			e.setLine(1, e.getLine(1).trim());
 		}
 	}
 
@@ -463,10 +566,20 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 								{
 									sleepMessageTasks.remove(entry.getKey());
 								}
-								final String message = getConfig().getString("sleepCoordination.message").replace("&", "§").replace("%sleeping%", String.valueOf(entry.getValue().size())).replace("%total%", neededForSleepString);
-								for(Player p : entry.getKey().getPlayers())
+								final String message = applyColor(getConfig().getString("sleepCoordination.message")).replace("%sleeping%", String.valueOf(entry.getValue().size())).replace("%total%", neededForSleepString);
+								synchronized(cleverAntiAfkPlayers)
 								{
-									p.sendMessage(message);
+									for(Player p : entry.getKey().getPlayers())
+									{
+										if(cleverAntiAfkPlayers.contains(p))
+										{
+											p.kickPlayer(applyColor(getConfig().getString("afkKickMessage")));
+										}
+										else
+										{
+											p.sendMessage(message);
+										}
+									}
 								}
 							}, intervalTicks));
 						}
