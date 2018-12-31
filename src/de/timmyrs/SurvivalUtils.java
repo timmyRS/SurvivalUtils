@@ -25,6 +25,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -151,6 +152,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 								if(!antiAfkFarmingPlayers.contains(entry.getKey()))
 								{
 									antiAfkFarmingPlayers.add(entry.getKey());
+									entry.getKey().setMetadata("afk", new FixedMetadataValue(this, true));
 								}
 							}
 						}
@@ -286,20 +288,32 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 									playersLastActivity.put(p, time);
 								}
 							}
-							antiAfkFarmingPlayers.clear();
+							clearAntiAfkFarmingPlayers();
 							cleverAntiAfkPlayers.clear();
 						}
 					}
 					else
 					{
 						playersLastActivity.clear();
-						antiAfkFarmingPlayers.clear();
+						clearAntiAfkFarmingPlayers();
 						cleverAntiAfkPlayers.clear();
 					}
 				}
 			}
 		}
 		saveConfig();
+	}
+
+	private void clearAntiAfkFarmingPlayers()
+	{
+		synchronized(antiAfkFarmingPlayers)
+		{
+			for(Player p : antiAfkFarmingPlayers)
+			{
+				p.removeMetadata("afk", this);
+			}
+			antiAfkFarmingPlayers.clear();
+		}
 	}
 
 	@EventHandler
@@ -336,6 +350,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 			synchronized(antiAfkFarmingPlayers)
 			{
 				antiAfkFarmingPlayers.remove(e.getPlayer());
+				e.getPlayer().removeMetadata("afk", this);
 			}
 			synchronized(cleverAntiAfkPlayers)
 			{
@@ -360,6 +375,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 			synchronized(antiAfkFarmingPlayers)
 			{
 				antiAfkFarmingPlayers.remove(e.getPlayer());
+				e.getPlayer().removeMetadata("afk", this);
 			}
 			synchronized(cleverAntiAfkPlayers)
 			{
@@ -525,7 +541,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 			{
 				intervalTicks = getConfig().getLong("sleepCoordination.intervalTicks") - subTicks;
 			}
-			for(Map.Entry<World, ArrayList<Player>> entry : worlds.entrySet())
+			for(final Map.Entry<World, ArrayList<Player>> entry : worlds.entrySet())
 			{
 				final int worldSleepingPlayers = entry.getValue().size();
 				if(worldSleepingPlayers > 0)
@@ -537,12 +553,22 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 						{
 							continue;
 						}
-						neededForSleep++;
+						synchronized(cleverAntiAfkPlayers)
+						{
+							if(cleverAntiAfkPlayers.contains(p))
+							{
+								p.kickPlayer(applyColor(getConfig().getString("afkKickMessage")));
+							}
+							else
+							{
+								neededForSleep++;
+							}
+						}
 					}
 					neededForSleep = Math.round((double) neededForSleep * getConfig().getDouble("sleepCoordination.skipPercent") * 0.01D);
 					if(worldSleepingPlayers >= neededForSleep)
 					{
-						if(entry.getKey().getPlayers().size() < worldSleepingPlayers)
+						if(worldSleepingPlayers < entry.getKey().getPlayers().size())
 						{
 							synchronized(sleepingPlayers)
 							{
@@ -571,14 +597,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 								{
 									for(Player p : entry.getKey().getPlayers())
 									{
-										if(cleverAntiAfkPlayers.contains(p))
-										{
-											p.kickPlayer(applyColor(getConfig().getString("afkKickMessage")));
-										}
-										else
-										{
-											p.sendMessage(message);
-										}
+										p.sendMessage(message);
 									}
 								}
 							}, intervalTicks));
@@ -598,15 +617,15 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 			{
 				if(e.getPlayer().isSleeping())
 				{
-					final boolean changed;
 					synchronized(sleepingPlayers)
 					{
-						changed = sleepingPlayers.add(e.getPlayer());
+						if(sleepingPlayers.contains(e.getPlayer()))
+						{
+							return;
+						}
+						sleepingPlayers.add(e.getPlayer());
 					}
-					if(changed)
-					{
-						handleSleep(5);
-					}
+					handleSleep(5);
 				}
 			}, 5);
 		}
@@ -617,15 +636,11 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	{
 		if(getConfig().getBoolean("sleepCoordination.enabled"))
 		{
-			final boolean changed;
 			synchronized(sleepingPlayers)
 			{
-				changed = sleepingPlayers.remove(e.getPlayer());
+				sleepingPlayers.remove(e.getPlayer());
 			}
-			if(changed)
-			{
-				handleSleep(0);
-			}
+			handleSleep(0);
 		}
 	}
 
