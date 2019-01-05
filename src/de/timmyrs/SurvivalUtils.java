@@ -47,6 +47,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	private final ArrayList<Player> sleepingPlayers = new ArrayList<>();
 	private final HashMap<World, Integer> sleepMessageTasks = new HashMap<>();
 	private final ArrayList<Player> colorSignInformed = new ArrayList<>();
+	private final HashMap<Player, Long> playersNextTeleport = new HashMap<>();
 
 	@Override
 	public void onEnable()
@@ -80,6 +81,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 		getConfig().addDefault("sleepCoordination.message", "&e%sleeping%/%total% players are sleeping. Won't you join them?");
 		getConfig().addDefault("sleepCoordination.intervalTicks", 50);
 		getConfig().addDefault("sleepCoordination.skipPercent", 100D);
+		getConfig().addDefault("teleportCooldown", 0);
 		getConfig().addDefault("createWarpCommands", false);
 		getConfig().addDefault("warpSigns.line", "[Warp]");
 		getConfig().addDefault("warpSigns.color", "5");
@@ -197,7 +199,38 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 	private boolean canTeleport(Player p)
 	{
 		//noinspection deprecation
-		return p.isOnGround() || p.getGameMode() == GameMode.CREATIVE || p.getGameMode() == GameMode.SPECTATOR;
+		if(p.isOnGround() || p.getGameMode() == GameMode.CREATIVE || p.getGameMode() == GameMode.SPECTATOR)
+		{
+			final long time = getTime();
+			final Long nextTeleport;
+			synchronized(playersNextTeleport)
+			{
+				nextTeleport = playersNextTeleport.get(p);
+				if(nextTeleport == null || time >= nextTeleport)
+				{
+					return true;
+				}
+			}
+			final long seconds = (nextTeleport - time);
+			p.sendMessage("§cYou can teleport again in " + seconds + " second" + (seconds == 1 ? "" : "s") + ".");
+		}
+		else
+		{
+			p.sendMessage("§cYou may not teleport right now.");
+		}
+		return false;
+	}
+
+	private void teleport(Player p, Location l)
+	{
+		p.teleport(l);
+		if(!p.hasPermission("survivalutils.notpcooldown") && getConfig().getLong("teleportCooldown") > 0)
+		{
+			synchronized(playersNextTeleport)
+			{
+				playersNextTeleport.put(p, getTime() + getConfig().getLong("teleportCooldown"));
+			}
+		}
 	}
 
 	static long getTime()
@@ -300,6 +333,10 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					}
 				}
 			}
+		}
+		synchronized(playersNextTeleport)
+		{
+			playersNextTeleport.clear();
 		}
 		saveConfig();
 	}
@@ -658,11 +695,7 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 					e.setCancelled(true);
 					if(canTeleport(p))
 					{
-						p.teleport(stringToLocation(getConfig().getString("warps." + command)));
-					}
-					else
-					{
-						p.sendMessage("§cYou may not teleport right now.");
+						teleport(p, stringToLocation(getConfig().getString("warps." + command)));
 					}
 				}
 			}
@@ -895,16 +928,12 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 							final String w = a[0].toLowerCase();
 							if((p.hasPermission("survivalutils.warps") || p.hasPermission("survivalutils.warps." + w)) && getConfig().contains("warps." + w))
 							{
-								p.teleport(stringToLocation(getConfig().getString("warps." + w)));
+								teleport(p, stringToLocation(getConfig().getString("warps." + w)));
 							}
 							else
 							{
 								p.sendMessage("§c'" + w + "' is not a warp point.");
 							}
-						}
-						else
-						{
-							p.sendMessage("§cYou may not teleport right now.");
 						}
 					}
 					else
@@ -1021,11 +1050,11 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 									final Map<String, Object> homes = playerConfig.getConfigurationSection("homes").getValues(false);
 									if(homes.containsKey(homename))
 									{
-										p.teleport(stringToLocation((String) homes.get(homename)));
+										teleport(p, stringToLocation((String) homes.get(homename)));
 									}
 									else if(homes.size() == 1)
 									{
-										p.teleport(stringToLocation((String) homes.values().iterator().next()));
+										teleport(p, stringToLocation((String) homes.values().iterator().next()));
 									}
 									else
 									{
@@ -1042,10 +1071,6 @@ public class SurvivalUtils extends JavaPlugin implements Listener, CommandExecut
 								e.printStackTrace();
 								p.sendMessage("§cAn I/O error has occured. Please contact an administrator.");
 							}
-						}
-						else
-						{
-							p.sendMessage("§cYou may not teleport right now.");
 						}
 					}
 				}

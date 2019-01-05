@@ -32,11 +32,12 @@ All features are disabled/OP-only by default to allow for maximum configurabilit
   - `survivalutils.tpa.toggle` allows the player to use `/tptoggle`.
 - `survivalutils.home` allows the player to use `/home`, `/sethome`, `/delhome`, and `/homes`.
 - `survivalutils.homelimit.x` allows the player to use home limit 'x' as defined in the config.yml.
-- `survivalutils.allowafk` allows the player to bypass all anti-AFK measures.
-- `survivalutils.warp` allows the player to use `/warp`, `/warps`, and warp commands, if enabled.
+- `survivalutils.warp` allows the player to teleport to and list warps.
 - `survivalutils.warps` allows the player to warp everywhere.
 - `survivalutils.warps.x` allows the player to warp to warp 'x'.
 - `survivalutils.warpsigns` allows the player to place warp signs.
+- `survivalutils.allowafk` allows the player to bypass all anti-AFK measures.
+- `survivalutils.notpcooldown` allows the player to bypass the teleportation cooldown.
 - `survivalutils.managewarps` allows the player to use `/setwarp` and `/delwarp`.
 - `survivalutils.coloredsigns` allows the player to use colors on signs.
 - `survivalutils.reload` allows the player to use `/survivalutils reload`.
@@ -84,6 +85,7 @@ Similarly, you can use the permissions.yml to remove permissions from OPs:
   - `message`: The message that will be sent to all players in a dimension when at least one player is sleeping.
   - `intervalTicks`: The amount of ticks to wait before broadcasting the message. (1 second = 20 ticks)
   - `skipPercent`: The percent of players that have to sleep for the night or storm to end.
+- `teleportCooldown`: The amount of seconds players will have to wait to teleport again.
 - `createWarpCommands`: Create warp commands, e.g. `/spawn` to alias `/warp spawn`? (true/false)
 - `warpSigns`
   - `line`: The first line of warp signs
